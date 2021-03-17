@@ -1,0 +1,25 @@
+Plan of implementation:
+
+- Create a central toolkit used to perform the calculations. It uses xgcm, numpy, xarray operations but extends
+  them to allow the output of a variable e.g. on a specific gridpoint, or with specific discretizations like NEMO.
+
+- Add sidemodules which perform the respective computations (e.g. power, flow, energy, ...)
+
+
+    --- tools.py ---
+    -> Define the settings for the operations when used (e.g nemo discretization, grid=static/variable)
+
+    - Remapping
+    - Output grid position ('standard': Redirect to standard xgcm operations; 'custom': Customized)
+    -
+
+    --- power.py ---
+
+   -> Calcultaion for power input
+
+   --- flow.py ---
+   -> Calculations of flow, transport...
+
+
+
+
