@@ -11,5 +11,5 @@ def _compute_moc_with_v_at_cst_depth(v, grid, X="X", Z="Z"):
     # integrate from top to bot
     psi = grid.cumint(v_x_dx, axis=Z, boundary="fill", fill_value=0) * 1e-6
     # convert -> from bot to top
-    psi = psi - psi.isel({grid.axes[Z]._get_axis_coord(psi)[1]: -1})
+    psi = psi - psi.isel({grid._get_dims_from_axis(psi,Z)[0]: -1})
     return psi

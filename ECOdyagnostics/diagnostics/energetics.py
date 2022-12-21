@@ -14,7 +14,7 @@ class Energetics:
                  properties,
                  position_out='T',
                  interpolation_step='preceding',
-                 eos='Non-linear'
+                 eos='seos'
                  ):
 
         self.position_out = position_out
@@ -49,10 +49,10 @@ class Energetics:
         if not output_position:
             output_position = self.position_out
 
-        Z = - self.properties.coords['Z']
+        Z = self.properties.coords['Z']
         g = self.properties.constants['g']
-
-        if self.ops._matching_pos(rho,output_position):
+        
+        if self.ops._matching_pos(rho,output_position) or rho.dims == ('t',):
             return rho * g * (Z - Z_r)
 
         else:
@@ -73,7 +73,7 @@ class Energetics:
         SA = S
         return gsw.internal_energy(SA,CT,p)
 
-    def dynamic_enthalpy(self,  T, S, Z, eos, Z_r=0, T_ref=10, S_ref=35, output_position=None, **maskargs):
+    def dynamic_enthalpy(self,  T, S, Z, eos=None, Z_r=0, T_ref=10, S_ref=35, output_position=None, **kwargs):
         if not output_position:
             output_position = self.position_out
 
@@ -81,8 +81,8 @@ class Energetics:
         g = self.properties.constants['g']
         rho0 = self.properties.constants['rho0']
 
-        a0 = self.properties.ocean_properties['thermal_expansion_2nd']
-        b0 = self.properties.ocean_properties['haline_expansion_2nd']
+        a0 = self.properties.ocean_properties['thermal_expansion']
+        b0 = self.properties.ocean_properties['haline_expansion']
         lambda1 = self.properties.ocean_properties['cabbeling_T']
         lambda2 = self.properties.ocean_properties['cabbeling_S']
         nu = self.properties.ocean_properties['cabbeling_TS']
@@ -91,22 +91,25 @@ class Energetics:
         dT = T - T_ref
         dS = S - S_ref
 
-        mask = self.ops._get_mask(T, **maskargs)
+        mask = self.ops._get_mask(T, **kwargs)
 
         Z = Z * mask
-        if eos == '2nd-eos':
+        
+        if not eos:
+            eos = self.eos
+        if eos == '2eos':
             def h(dT, dS, Z):
                 h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0 * (1+lambda2/2*dS) * dS - nu*dT*dS) * (Z_r - Z)
                         + 0.5 * (-a0*mu1*dT + b0*mu2*dS) * (Z_r**2 - Z**2))
                 return h
 
-        elif eos == 's-eos':
+        elif eos == 'seos':
             def h(dT, dS, Z):
                 h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0*dS) * (Z_r - Z)
                         - 0.5*a0*mu1*dT * (Z_r**2 - Z**2))
                 return h
 
-        elif eos == 'lin-eos':
+        elif eos == 'leos':
             def h(dT, dS, Z):
                 alpha = self.properties.ocean_properties['thermal_expansion_lin']
                 beta = self.properties.ocean_properties['haline_expansion_lin']
@@ -142,7 +145,7 @@ class Energetics:
         else:
             return self.ops._shift_position(h, output_position)
 
-    def center_of_gravity_PE(self, rho, Z_r=0, boussinesq=True, **maskargs):
+    def center_of_gravity_PE(self, rho, Z_r=0, boussinesq=True, **kwargs):
         """
         Computes the position of the center of mass.
         Returns the location for each axis. Operates on a 3D grid.
@@ -151,100 +154,147 @@ class Energetics:
             pos = self.ops._get_position(rho)
         except:
             pos = 'T'
-        dr = self.ops._get_metric_by_pos(['X', 'Y', 'Z'], pos)
-        dV = np.prod(dr)
+                
+        dV = self.ops._get_metric_by_pos(['X','Y','Z'], pos, combine = True)[0]
         # Compute Sum(PE*dV) and Sum(rho*dV)
 
-        mask = self.ops._get_mask(rho, **maskargs)
+        mask = self.ops._get_mask(dV, **kwargs)
 
         rho = rho * mask
 
         if boussinesq:
-            mass_full = (self.properties.constants['rho0'] * dV*mask).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
+            mass_full = (self.properties.constants['rho0'] * dV * mask).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
         else:
-            mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(rho, ('X', 'Y', 'Z')))
+            mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
 
         PE = self.potential_energy(rho, Z_r=Z_r)
-        TPE_full = (PE * dV).sum(self.ops.grid._get_dims_from_axis(PE, ('X', 'Y', 'Z')))
+        TPE_full = (PE * dV * mask).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
 
         g = self.properties.constants['g']
 
         # Return center of gravity
         return TPE_full / (g * mass_full)
 
-    def center_of_gravity_h(self, T, S, z, eos, Z_r=0, T_ref=10, S_ref=35, output_position='T', **maskargs):
+    def center_of_gravity_h(self, T, S, z, eos, Z_r=0, T_ref=10, S_ref=35, output_position='T', **kwargs):
         """
         Computes the position of the center of mass.
-        Returns the location for each axis. Operates on a 3D grid.
+        Returns the location for each axis. Operates on a 1D or 3D grid.
         """
+        #Position check
         try:
             pos = self.ops._get_position(T)
         except:
             pos = 'T'
-
-        g = self.properties.constants['g']
+            
         if self.ops._matching_pos(z,'T'):
             pass
         else:
             Exception('depth has the wrong position {}. Please provide a depth on T position.'.format(self.ops._get_position(z)))
 
-        h = self.dynamic_enthalpy(T, S, z, eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref, output_position=output_position, **maskargs)
-        zg =self.ops.average(h, ['X','Y','Z'],**maskargs) / g
+        #Compute dynamic_enthalpy
+        h = self.dynamic_enthalpy(T, S, z, eos=eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref, output_position=output_position, **kwargs)
+        
+        #Check dimension, 1D and 3D valid
+        skip=0
+        if 't' in h.dims:
+            skip=1
+        
+        if len(h.dims[skip:]) == 1:
+            return self.ops.average(h, ['Z'],**kwargs) / self.properties.constants['g']
+        elif len(h.dims[skip:])==3:
+            return self.ops.average(h, ['X','Y','Z'],**kwargs) / self.properties.constants['g']
+        else:
+            raise Exception("Data has to be 1D or 3D in space, please check dimensions or time variable name, expected: 't'")
+            
 
-        return zg
-
-    def center_of_gravity_eta(self, eta, rho, eta_r=0, boussinesq=False, **maskargs):
+    def center_of_gravity_eta(self, eta, rho, eta_r=0, boussinesq=False, **kwargs):
         """
         Computes the position of the center of mass.
         Returns the location for each axis. Operates on a 3D grid.
         """
+        
         try:
             pos = self.ops._get_position(rho)
         except:
             pos = 'T'
-        dr = self.ops._get_metric_by_pos(['X', 'Y', 'Z'], pos)
-        dV = np.prod(dr)
-        dA_s = dr[0]*dr[1]
-        #g = self.properties.constants['g']
+            
         rho0 = self.properties.constants['rho0']
+        dr = self.ops._get_metric_by_pos(['X', 'Y', 'Z'], pos)
+        dA_s = dr[0]*dr[1]
+        del dr
 
-        mask = self.ops._get_mask(rho, **maskargs)
+        mask = self.ops._get_mask(rho, **kwargs)
 
-        rho = rho * mask
-
+        dV = self.ops._get_metric_by_pos(['X','Y','Z'], pos, combine = True)[0] * mask
         if boussinesq:
-            mass_full = (rho0 * dV * mask).sum(
-                self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
+            mass_full = (rho0 * dV).sum(self.ops._get_dims(dV))
         else:
-            mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(rho, ('X', 'Y', 'Z')))
-
-        zg_eta = (0.5  * rho0 * dA_s* (eta**2-eta_r**2)).sum(self.ops.grid._get_dims_from_axis(eta, ('X', 'Y'))) / mass_full#self.ops.average(h, ['X','Y','Z'],mask='nan') / g
+            mass_full = (rho  * dV).sum(self.ops._get_dims(rho))
+        del dV
+        
+        zg_eta = (0.5 * rho0 * dA_s* (eta**2-eta_r**2)).sum(self.ops.grid._get_dims_from_axis(eta, ('X', 'Y'))) / mass_full
+        #self.ops.average(h, ['X','Y','Z'],mask='nan') / g
 
         return zg_eta
 
-    def center_of_gravity_classical(self, rho, boussinesq=False, coords=None, **maskargs):
+    def center_of_gravity_classical(self, rho, boussinesq=False, coords=None, **kwargs):
         """
         Computes the position of the center of mass.
-        Returns the location for each axis. Operates on a 3D grid.
+        Returns the location for each axis. Operates on a 1D or 3D grid.
         """
         try:
             pos = self.ops._get_position(rho)
         except:
             pos = 'T'
-        dr = self.ops._get_metric_by_pos(['X', 'Y', 'Z'], pos)
-        dV = np.prod(dr)
+        
+        ### Check Case, treat 0D as 1D
+        skip=0
+        if 't' in rho.dims:
+            skip=1
+        
+        if len(rho.dims[skip:]) in [1,0]:
+            case = 1
+        elif len(rho.dims[skip:])==3:
+            case = 3
+        else:
+            raise Exception("Data has to be 1D or 3D in space, please check dimensions or time variable name ('t')")
+            
+        ### Get metrics & coordinate
+        if case == 1:
+            dV = self.ops._get_metric_by_pos('Z', pos, case = 'smallest')[0]
+        elif case == 3:
+            dV = self.ops._get_metric_by_pos(['X', 'Y', 'Z'], pos, combine = True)[0]
+                    
         if coords is None:
-            coords = [self.properties.coords[coord] for coord in ['X','Y','Z']]
-        x, y, z = coords
-        # Compute Sum ( rho * V * D)
-        mask = self.ops._get_mask(rho, **maskargs)
+            if case == 1:
+                z = self.properties.coords['Z']
+                
+            elif case == 3:
+                coords = [self.properties.coords[coord] for coord in ['X','Y','Z']]
+                x, y, z = coords
+                
+        # Compute
+        mask = self.ops._get_mask(dV, **kwargs)
         rho = rho * mask
 
-        if boussinesq:
-            rho0 = self.properties.constants['rho0']
-            mass_full = (rho0*dV*mask).sum(self.ops.grid._get_dims_from_axis(rho, ('X', 'Y', 'Z')))
-        else:
-            mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(rho, ('X', 'Y', 'Z')))
+        if case == 1:
+            if boussinesq:
+                rho0 = self.properties.constants['rho0']
+                mass_full = (rho0*dV*mask).sum(self.ops.grid._get_dims_from_axis(dV, ('Z')))
+            else:
+                mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('Z')))
+                
+            R_z = (rho * z * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('Z'))) / mass_full
+            
+        if case == 3:
+            if boussinesq:
+                rho0 = self.properties.constants['rho0']
+                mass_full = (rho0*dV*mask).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
+            else:
+                mass_full = (rho * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z')))
+                
+            R_z = (rho * z * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z'))) / mass_full
+
         #mass_c.sum(self.ops.grid._get_dims_from_axis(mass_c, ('X', 'Y')))
         #mass_zonal = mass_c.sum(self.ops.grid._get_dims_from_axis(mass_c, ('X', 'Z')))
         #mass_meridional = mass_c.sum(self.ops.grid._get_dims_from_axis(mass_c, ('Y', 'Z')))
@@ -252,12 +302,11 @@ class Energetics:
         # Get center of mass
         #R_x = (rho * x * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z'))) / mass_full
         #R_y = (rho * y * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z'))) / mass_full
-        R_z = (rho * z * dV).sum(self.ops.grid._get_dims_from_axis(dV, ('X', 'Y', 'Z'))) / mass_full
         #R_x = (mass_meridional * x).sum(self.ops.grid._get_dims_from_axis(mass_c, ('X'))) / mass_full
         #R_y = (mass_zonal * y).sum(self.ops.grid._get_dims_from_axis(mass_c, ('Y'))) / mass_full
         #R_z = (mass_horizontal * z).sum(self.ops.grid._get_dims_from_axis(mass_c, 'Z')) / mass_full
 
-        return R_z#[R_x, R_y, R_z]
+        return R_z #[R_x, R_y, R_z]
 
 class Energetics_trends:
 
@@ -267,7 +316,7 @@ class Energetics_trends:
                  trends_file,
                  position_out='T',
                  interpolation_step='preceding',
-                 eos='s-eos'
+                 eos='seos'
                  ):
         self.position_out = position_out
         self.interpolation_step = interpolation_step
@@ -275,6 +324,8 @@ class Energetics_trends:
         self.ops = ops
         self.properties = properties
         self.transport = Transport(ops)
+        #if trends_file=='default':
+        #    trends_file=''
         self.tracers = Tracers(ops, properties, trends_file)
 
         config = configparser.ConfigParser()
@@ -291,13 +342,10 @@ class Energetics_trends:
 
     def kinetic_energy_trend(self, v, rho, **kwargs):
 
-        processes_keys = ['adv_h', 'adv_v', 'conv', 'diff_h','diff_v','fric_bot','fric_dis','wind_str']
         ke_trends = dict()
-        for i in kwargs:
-            if i not in processes_keys:
-                print('Invalid process {}'.format(i))
-            elif i in processes_keys and i not in self.trends_ke:
-                print('Process {} is deactivated but still given'.format(i))
+        for i in list(kwargs.keys()):
+            if i not in self.trends_ke:
+                print('Process is deactivated or invalid keyword {}'.format(i))
         for i in self.trends_ke:
             if i in self.trends_ke:
                 ke_trends[i] = kwargs.get(i,None)
@@ -329,11 +377,11 @@ class Energetics_trends:
     def internal_energy_trend(self):
         pass
 
-    def center_of_gravity_h_trend(self, rho, v, T, S, Z, Z_r=0, T_ref=10, S_ref=35,
+    def center_of_gravity_h_trend(self, rho, v, T, S, Z, eos = None, Z_r=0, T_ref=10, S_ref=35,
                                   T_trend=None, T_trends=None,
                                   S_trend=None, S_trends=None,
                                   C_trend=None, C_trends=None,
-                                  boundary=None, **maskargs):
+                                  boundary=None, Vmask=None, **kwargs):
 
         ## Get T and S trends
         if T_trend is None and T_trends is None:
@@ -348,9 +396,11 @@ class Energetics_trends:
             S_trends = self.tracers.salinity_trend(**S_trends)
             S_trend = S_trends[0]
 
+        if not eos:
+            eos = self.eos
         ## Get derivatives of h in T and S
-        dh_T = self.properties.dh_T(T, S, Z, self.eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
-        dh_S = self.properties.dh_S(T, S, Z, self.eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
+        dh_T = self.properties.dh_T(T, S, Z, eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
+        dh_S = self.properties.dh_S(T, S, Z, eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
 
         g=self.properties.constants['g']
         rho0=self.properties.constants['rho0']
@@ -360,26 +410,27 @@ class Energetics_trends:
             raise Exception('Please provide either the total C_trend or the processes as dictionary named C_trends')
         elif not C_trends is None:
             C_trends = self.kinetic_energy_trend(v, rho, **C_trends)
-            C_trend = 1/rho0 * C_trends[0]
+            if C_trend is None:
+                C_trend = C_trends[0]
 
-        zg_trend = 1/g * (self.properties.basin_mean(dh_T*T_trend, boundary, **maskargs) +
-                          self.properties.basin_mean(dh_S*S_trend, boundary, **maskargs) +
-                          self.properties.basin_mean(C_trend, boundary, **maskargs))
+        zg_trend = 1/g * (self.properties.global_mean(dh_T*T_trend, Vmask=Vmask, **kwargs) +
+                          self.properties.global_mean(dh_S*S_trend, Vmask=Vmask, **kwargs) +
+                          self.properties.global_mean(C_trend/rho0, Vmask=Vmask, **kwargs))
 
         zg_trends = []
         if not T_trends is None:
-            zg_trends.append({i: dh_T * T_trends[1][i] / g for i in T_trends[1]})
+            zg_trends.append({i: T_trends[1][i] * dh_T / g for i in T_trends[1]})
         else:
-            zg_trends.append(dh_T * T_trend / g)
+            zg_trends.append({'T_tot':dh_T * T_trend / g})
 
         if not S_trends is None:
-            zg_trends.append({i: dh_S * S_trends[1][i] / g for i in S_trends[1]})
+            zg_trends.append({i: S_trends[1][i] * dh_S / g for i in S_trends[1]})
         else:
-            zg_trends.append(dh_S * S_trend / g)
+            zg_trends.append({'S_tot':dh_S * S_trend / g})
 
         if not C_trends is None:
-            zg_trends.append({i:  C_trends[1][i] / g for i in C_trends[1]})
+            zg_trends.append({i:  C_trends[1][i] / g / rho0 for i in C_trends[1]})
         else:
-            zg_trends.append( C_trend / g)
+            zg_trends.append({'convp2k': C_trend / g / rho0})
 
         return zg_trend, zg_trends

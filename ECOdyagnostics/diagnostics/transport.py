@@ -32,7 +32,7 @@ class Transport:
         # Skip the z-coordinate since it is zero but would mess up dimension comparison
         if f_interpolation:
             if self.ops._matching_dim(tau_x_k, f_in, skip1 = 2, skip2 =2) == True:
-                pass
+                f=f_in
             else:
                 f = [np.nan] * 3
                 for i in  range(2):
@@ -46,9 +46,9 @@ class Transport:
             U_Ek = []
             for ax in range(3):
                 if type(f) is list:
-                    U_Ek.append(tau_x_k[ax] / (rho_0 * f[ax]))
+                    U_Ek.append(- tau_x_k[ax] / (rho_0 * f[ax]))
                 else:
-                    U_Ek.append(tau_x_k[ax] / (rho_0 * f))
+                    U_Ek.append(- tau_x_k[ax] / (rho_0 * f))
         else:
             raise Exception("""Dimensions of tau x k and f do not match %s - %s
                 """ % (self.ops._get_dims(tau_x_k), self.ops._get_dims(f)))
@@ -66,9 +66,55 @@ class Transport:
         """
         # Calculate horizontal gradient of ekman transport
         w_Ek = self.ops.dot( [1,1,0],
-                             [self.ops.derivative(U_ek[0],axis='X'),self.ops.derivative(U_ek[1],axis='Y'),0]
+                             [self.ops.grid.derivative(U_ek[0], 'X',boundary='fill',fill_value=0),
+                              self.ops.grid.derivative(U_ek[1], 'Y',boundary='fill',fill_value=0), 0]
+                             #[self.ops.derivative(U_ek[0],axis='X'),self.ops.derivative(U_ek[1],axis='Y'),0]
                              )
         return w_Ek
 
+    def moc_streamfunction(self, v, Vmask=None, **maskargs):
+
+        #Integrate over longitudes
+        v_x = self.ops.grid.integrate(v, axis='X')
+
+        #Cumint in depth (bottom to top)
+        try:
+            sf = self.ops.grid.cumint(v_x, axis='Z' , boundary="fill", fill_value=0)
+        except:
+            z_t = self.ops.average(self.ops.grid.get_metric(v, 'Z'), ['X','Y'] , Vmask=Vmask, **maskargs )
+            sf = self.ops.grid.cumsum(v_x*z_t, axis='Z', boundary="fill", fill_value=0)
+
+        sf = sf - sf.isel({self.ops.grid._get_dims_from_axis(sf, 'Z')[0]: -1})
+
+        return sf
+
     def conv(self,):
         pass
+
+    def enhanced_diffusion_mask(self, trd_zdf, case, case_data, condition=1e-12, invert=False):
+        """
+        Returns a mask that masks regions affected by enhanced vertical diffusion which mimics convection.
+        Convection is applied when the condition N2 < -1e-12 is true, where N2 is the Brunt-Väisälä-frequency.
+        Alternatively the mask is generated based on the buoyancy forcing, where it is applied when buoyancy forcing is negative.
+        :param trd_zdf:
+        :param T:
+        :param S:
+        :param alpha:
+        :param beta:
+        :return:
+        """
+
+        mask = trd_zdf.copy(data=np.ones(trd_zdf.shape))
+        if case == 'Brunt_Vaisala':
+            if not invert:
+                mask = mask.where(case_data <= condition, other=np.nan)
+            elif invert:
+                mask = mask.where(case_data > condition, other=np.nan)
+
+        elif case == 'Buoyancy_forcing':
+            if not invert:
+                mask = mask.where(case_data <= condition, other=np.nan)
+            elif invert:
+                mask = mask.where(case_data > condition, other=np.nan)
+
+        return mask

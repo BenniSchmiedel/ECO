@@ -34,14 +34,15 @@ def dataset_domainmerge(path, file, coord_names, coord_vars, coord_level, dims_n
 
         ds = [xr.open_dataset(path + file + "{}.nc".format(i)) for i in range(8)]
         ds = xr.combine_by_coords(ds)
-        os.remove(path+outputfile)
+        if os.path.isfile(path + outputfile):
+            os.remove(path+outputfile)
         ds.to_netcdf(path=path+outputfile,mode="w")
 
     return path + file + "_merge.nc"
 
 
 def dataset_coords_assign(dataset, coord_names, coord_vars, coord_level):
-    if type(coord_level) == int:
+    if type(coord_level) == int or coord_level is None:
         coord_names, coord_vars, coord_level = [coord_names], [coord_vars], [coord_level]
     for c in range(len(coord_names)):
         cn = coord_names[c]
@@ -202,7 +203,7 @@ def dataset_full_dim_coord_update(path,
                 if f == specific_name:
                     files.remove(f)
 
-
+    n=0
     for f in files:
         print(f)
         ds = xr.open_dataset(path + f)#, decode_times=False)
@@ -263,8 +264,8 @@ def dataset_full_dim_coord_update(path,
             print("Updated {} dimensions and {} coordinates. {} variables were removed.".format(*track))
             os.remove(path + f)
             ds.to_netcdf(path=path + f, mode="w")
-
-    return track[0]
+        n+=track[0]
+    return n
 
 def dataset_time_shift(path,time_var ,time_shift, name_init=None, specific_name=None):
 

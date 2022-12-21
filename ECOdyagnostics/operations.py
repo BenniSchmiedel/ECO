@@ -17,7 +17,8 @@ class Grid_ops:
     def __init__(self,
                  grid,
                  discretization='standard',
-                 boundary={'boundary': 'fill', 'fill_value': 0}):
+                 boundary={'boundary': 'fill', 'fill_value': 0},
+                 maskargs={'mask':None}):
         """
         Creates the standard configuration for the operations used.
         The configuration of an operation can be customized by will if required.
@@ -26,17 +27,27 @@ class Grid_ops:
         self.discretization = discretization
         self.boundary = boundary
         # Position types, hard coded
-        self.points = {'T': (('z_c', 'y_c', 'x_c'), ('y_c', 'x_c'), ('z_c',)),
+        self.points = {'T': (('z_c', 'y_c', 'x_c'), ('z_c', 'x_c'), ('z_c', 'y_c'), ('y_c', 'x_c'), ('z_c',)),
                        'U': (('z_c', 'y_c', 'x_f'), ('y_c', 'x_f'), ('x_f',)),
                        'V': (('z_c', 'y_f', 'x_c'), ('y_f', 'x_c'), ('y_f',)),
                        'F': (('z_c', 'y_f', 'x_f'), ('y_f', 'x_f')),
-                       'W': (('z_f', 'y_c', 'x_c'), ('z_f',)),
+                       'W': (('z_f', 'y_c', 'x_c'), ('y_c', 'x_c'), ('z_f',)),
                        'UW': (('z_f', 'y_c', 'x_f'),),
                        'VW': (('z_f', 'y_f', 'x_c'),),
                        'FW': (('z_f', 'y_f', 'x_f'),)
                        }
         self.shift_mask = {}
+        self.maskargs = maskargs
 
+    def _update(self,
+                metric):
+        
+        for m, v in metric.items():
+            if v.name not in [var.name for var in self.grid._metrics[frozenset({m})]]:
+                self.grid._metrics[frozenset({m})].append(v)
+        
+        return self.grid
+                
     def _data_skip(self, da, skip):
         """
         Returns a cut version of data vector da by skipping physical dimensions
@@ -83,6 +94,41 @@ class Grid_ops:
 
         return pos
 
+    def _get_dims_order(self, da):
+
+        dims = da.dims
+        pos = self._get_position(da)
+        if 't' in dims:
+            ind = dims.index('t')
+            dims = dims[:ind] + dims[ind + 1:]
+
+            if dims in self.points[pos]:
+                dims = ('t',) + dims
+            else:
+                for p in self.points[pos]:
+                    if len(dims) == len(p) and np.all([d in p for d in dims]):
+                        dims = ('t',) + p
+        else:
+            for p in self.points[pos]:
+                if len(dims) == len(p) and np.all([d in p for d in dims]):
+                    dims = p
+        return dims
+
+    def _product_transpose(self, da):
+        
+        p = np.prod(da)
+        if 't' in p.dims:
+            if 't' in dims:
+                p= p.transpose(*dims)
+            else:
+                p= p.transpose('t',*dims)
+        else:
+            if 't' in dims:
+                p= p.transpose(*dims[1:])
+            else:
+                p= p.transpose(*dims)
+                
+        return dV
     def _combine_metric(self, da, axes, skip=None):
         """
         Returns the product of metrics corresponding to the respective datavariable.
@@ -107,7 +153,7 @@ class Grid_ops:
 
         return metric
 
-    def _get_metric_by_pos(self, axes, pos):
+    def _get_metric_by_pos(self, axes, pos, combine = False, case = 'largest'):
         """
         Returns the metrics for given axes corresponding to a grid point position.
 
@@ -115,42 +161,47 @@ class Grid_ops:
 
         :return:    position of data varaible or vector
         """
-        if type(axes) is list:
-            metric_out = []
-            for ax in axes:
-                check = False
-                for i in self.points[pos]:
-                    metric_dims = self._get_dims(self.grid._metrics[frozenset(ax)])
-
-                    if any([i == a for a in metric_dims]):
-                        check = True
-                        ind = np.where([i == a for a in metric_dims])[0]
-                        #print(ind)
-                        if len(ind) == 1:
-                            metric_out.append(self.grid._metrics[frozenset(ax)][ind[0]])
-                        else:
-                            raise Exception(
-                                "Found multiple matches for the metric, ensure that metrics are not doubled.")
-                if not check:
-                    raise Exception("No matching metric was found on axis %s for position %s" % (ax, pos))
-        else:
-            ax = axes
-            #metric_out = []
+        if not type(axes) is list: axes = [axes]
+        metric_out = {}
+        metric_out_dims = {}
+        for ax in axes:
             check = False
             for i in self.points[pos]:
                 metric_dims = self._get_dims(self.grid._metrics[frozenset(ax)])
+
                 if any([i == a for a in metric_dims]):
                     check = True
                     ind = np.where([i == a for a in metric_dims])[0]
+                    if ax in metric_out:
+                        if case == 'largest' and len(i) < len(metric_out[ax].dims):
+                            continue
+                        elif case == 'smallest' and len(i) > len(metric_out[ax].dims):
+                            continue
+                            
                     if len(ind) == 1:
-                        #metric_out.append(self.grid._metrics[frozenset(ax)][ind[0]])
-                        metric_out = self.grid._metrics[frozenset(ax)][ind[0]]
+                        metric_out[ax] = self.grid._metrics[frozenset(ax)][ind[0]]
+                        metric_out_dims[ax] = metric_dims[ind[0]]
                     else:
                         raise Exception(
                             "Found multiple matches for the metric, ensure that metrics are not doubled.")
+                        
             if not check:
                 raise Exception("No matching metric was found on axis %s for position %s" % (ax, pos))
+        metric_out = list(metric_out.values())
+        metric_out_dims = list(metric_out_dims.values())
 
+        if combine and len(metric_out)>1:
+            metric = 1
+            try:
+                for m in [metric_out[i] for i in np.argsort(metric_out_dims,axis=0)[::-1]]:
+                    metric *= m
+            except:
+                for m in [metric_out[i[0]]for i in np.argsort(metric_out_dims,axis=0)[::-1]]:
+                    metric *= m
+            
+            name = '_'.join(['{}']*len(metric_out)).format(*tuple(m.name for m in metric_out))
+            metric_out = [metric.rename(name)]  
+            
         return metric_out
 
     def _get_shift_mask(self, da, fill_value=None, scaling=1):
@@ -370,12 +421,22 @@ class Grid_ops:
             dims = dims[:ind] + dims[ind + 1:]
 
         # Get the expected dimension with corresponding number of axes
-        ax_num = [len(l) for l in self.points[pos]].index(len(dims))
-        expect = self.points[pos][ax_num]
+        pos_opt = [len(l) for l in self.points[pos]].count(len(dims))
+        if pos_opt==1:
+            ax_num = [len(l) for l in self.points[pos]].index(len(dims))
+            expect = self.points[pos][ax_num]
+        else:
+            for opt in range(len(self.points[pos])):
+                find = [a[0] for a in dims]
+                current = [a[0] for a in self.points[pos][opt]]
+                if find==current:
+                    expect = self.points[pos][opt]
+                    break
 
         # Add physical dimensions where a missmatch is found
         missmatch = []
         for ax in range(len(expect)):
+            
             if dims[ax] == expect[ax]:
                 pass
             else:
@@ -388,7 +449,7 @@ class Grid_ops:
 
         return missmatch
 
-    def _shift_position(self, da, output_position, elements=None, bd='interp', bd_value=None, bd_scaling=1, **kwargs):
+    def _shift_position(self, da, output_position, elements=None, bd='interp', bd_value=None, bd_scaling=1, maskargs={}, **kwargs):
         """
         Returns the variable interpolated to a prescribed output position.
 
@@ -417,11 +478,12 @@ class Grid_ops:
                         missmatch = self._get_missmatch(element, pos)
                         if bd == 'interp':
                             da_out_i = self.interp(da[i].fillna(0), axis=missmatch, **kwargs)
-                            da_out_i *= self.nan_mask(da_out_i)
+                            da_out_i *= self._get_mask(da_out_i, maskargs=maskargs, **kwargs)
                         elif bd == 'fill':
                             da_out_i = self.interp(da[i], axis=missmatch, **kwargs)
-                            shift_mask = self._get_shift_mask(da[i], fill_value=bd_value, scaling=bd_scaling)
-                            da_out_i = da_out_i.copy(data=np.nan_to_num(da_out_i,0) + shift_mask.values)
+                            if self._get_position(da[i])!='T':
+                                shift_mask = self._get_shift_mask(da[i], fill_value=bd_value, scaling=bd_scaling)
+                                da_out_i = da_out_i.copy(data=np.nan_to_num(da_out_i,0) + shift_mask.values)
                             da_out_i *= self.nan_mask(da_out_i)
                         else:
                             raise Exception('Unknown handling of boundary values. Please use "interp" or "fill".')
@@ -437,11 +499,12 @@ class Grid_ops:
                 missmatch = self._get_missmatch(da, output_position)
                 if bd == 'interp':
                     da_out = self.interp(da.fillna(0),axis=missmatch, **kwargs)
-                    da_out *= self.nan_mask(da_out)
+                    da_out *= self._get_mask(da_out, maskargs=maskargs, **kwargs)
                 elif bd == 'fill':
                     da_out = self.interp(da, axis=missmatch, **kwargs)
-                    shift_mask = self._get_shift_mask(da, fill_value=bd_value, scaling=bd_scaling)
-                    da_out = da_out.copy(data=np.nan_to_num(da_out, 0) + shift_mask.values)
+                    if self._get_position(da)!='T':
+                        shift_mask = self._get_shift_mask(da, fill_value=bd_value, scaling=bd_scaling)
+                        da_out = da_out.copy(data=np.nan_to_num(da_out, 0) + shift_mask.values)
                     da_out *= self.nan_mask(da_out)
                 else:
                     raise Exception('Unknown handling of boundary values. Please use "interp" or "fill".')
@@ -525,59 +588,67 @@ class Grid_ops:
             else:
                 return False
 
-    def _get_mask(self, da, **maskargs):
+    def _get_mask(self, da, maskargs={},**kwargs):
+        """Return a mask based on the dataarray provided."""
+        
+        maskargs = {**self.maskargs, **maskargs}
 
-        if 'mask' in maskargs:
-            if maskargs['mask'] is None:
-                mask = 1
-            elif maskargs['mask'] == 'nan':
-                mask = self.nan_mask(da)
-            elif maskargs['mask'] == 'zero':
-                mask = self.zero_mask(da)
-            elif maskargs['mask'] == 'boundary':
-                if 'axes' in maskargs and 'index' in maskargs:
-                    mask = self.boundary_mask(da, maskargs['axes'], maskargs['index'])
-                else:
-                    raise Exception('Please provide axes and index as kwarg if boundary-mask is used!')
-            elif maskargs['mask'] == 'usr_def':
-                if 'mask_values' in maskargs:
-                    mask = maskargs['mask_values']
-                else:
-                    raise Exception('Please provide the mask in the kwarg mask_values if usr_def is used!')
-            elif maskargs['mask'] == 'mld':
-                if 'mld' in maskargs:
-                    if 'invert' in maskargs:
-                        mask = self.mld_mask(da, maskargs['mld'], maskargs['invert'])
-                    else:
-                        mask = self.mld_mask(da, maskargs['mld'])
-                else:
-                    raise Exception('Please provide the mld as kwarg mld if mld-mask is used!')
+        if maskargs['mask'] is None:
+            mask = 1
+        elif maskargs['mask'] == 'nan':
+            mask = self.nan_mask(da)
+        elif maskargs['mask'] == 'zero':
+            mask = self.zero_mask(da)
+        elif maskargs['mask'] == 'boundary':
+            if 'bd' in maskargs:
+                mask = self.boundary_mask(da, maskargs['bd'])
             else:
-                raise Exception('Unknown mask type')
+                raise Exception('Please provide bd = [ax, index] as kwarg if boundary-mask is used!')
+        elif maskargs['mask'] == 'usr_def':
+            if 'mask_values' in maskargs:
+                mask = maskargs['mask_values']
+            else:
+                raise Exception('Please provide the mask in the kwarg mask_values if usr_def is used!')
+        elif maskargs['mask'] == 'mld':
+            if 'mld' in maskargs and 'invert' in maskargs:
+                mask = self.mld_mask(da, maskargs['mld'], invert=maskargs['invert'],**kwargs)
+            elif 'mld' in maskargs:
+                mask = self.mld_mask(da, maskargs['mld'],**kwargs)
+            else:
+                raise Exception('Please provide the mld and invert in maskargs dictionary!')
+        elif maskargs['mask'] == 'sign':
+            if 'invert' in maskargs:
+                mask = self.sign_mask(da, invert=maskargs['invert'],**kwargs)
+            else:
+                mask = self.sign_mask(da, **kwargs)
         else:
-            mask=1
+            raise Exception('Unknown mask type')
 
         return mask
 
-    def boundary_mask(self, da, axes, index):
+    def boundary_mask(self, da, bd):
         """
         Return a mask of the data array where the boundaries along an axis are set to nan.
         """
-        dims = self.grid._get_dims_from_axis(da, axes)
-        mask_axes = [np.ones(da.sizes[ax]) for ax in dims]
+        dims = self.grid._get_dims_from_axis(da, bd.keys())
+        mask_axes = {ax:np.ones(da.sizes[ax]) for ax in dims}
         if len(dims) > 1:
-            for ax in range(len(dims)):
-                for i in index[ax]:
-                    mask_axes[ax][i] = np.nan
-            mask_value = np.prod(np.meshgrid(*mask_axes, indexing='ij'), axis=0)
-
+            for ax in enumerate(bd.keys()):
+                for i in bd[ax[1]]:
+                    mask_axes[dims[ax[0]]][i] = np.nan
+                    
+            return xr.DataArray(np.prod(np.meshgrid(*mask_axes.values(), indexing='ij'), axis=0),
+                                dims=dims,
+                                coords=dict(zip(dims,[da.coords[d] for d in dims])))
+        
         else:
-            mask_value = mask_axes[0]
-            for i in index:
-                mask_value[i] = np.nan
+            for i in list(bd.values())[0]:
+                mask_axes[dims[0]][i]= np.nan
+                
+            return xr.DataArray(mask_axes[dims[0]],
+                                dims=dims,
+                                coords=dict(zip(dims,[da.coords[d] for d in dims])))
 
-        mask = xr.DataArray(mask_value, coords={dims[i]: da[dims[i]].values for i in range(len(dims))}, dims=dims)
-        return mask
 
     def zero_mask(self, da):
         """
@@ -598,7 +669,7 @@ class Grid_ops:
         mask = xr.DataArray(da_one.values, coords={dim: da[dim].values for dim in da.dims}, dims=da.dims)
         return mask
 
-    def mld_mask(self, da, mld, invert=False):
+    def mld_mask(self, da, mld, invert=False, **kwargs):
         """
 
         :param da: Dataarray to get metrics from
@@ -609,30 +680,112 @@ class Grid_ops:
         """
         mask = da.copy(data=da.values * 0 + 1).rename('mld_mask')
         dim_z = self.grid._get_dims_from_axis(mask,'Z')[0]
+        depth = self.get_depth_from_metric(da, **kwargs)
         if not invert:
             if np.all([d in mld.dims for d in da.dims if d!=dim_z]):
-                mask = mask.where((mask[dim_z]<mld).transpose(*mask.dims))
+                mask = mask.where((depth<mld).transpose(*mask.dims))
             else:
                 dim_order = []
-                if 't' in mld.dims:
+                if 't' in mask.dims:
                     dim_order.append('t')
-                for i in range(1,len(mask.dims)):
+                    t=1
+                else:
+                    t=0
+                for i in range(t,len(mask.dims)):
                     if mask.dims[i] in mld.dims or mask.dims[i]==dim_z:
                         dim_order.append(mask.dims[i])
-                mask = mask.where((mask[dim_z] < mld).transpose(*tuple(dim_order)))
+                mask = mask.where((depth < mld).transpose(*tuple(dim_order)))
         elif invert:
             if np.all([d in mld.dims for d in da.dims if d!=dim_z]):
-                mask = mask.where((mask[dim_z]>mld).transpose(*mask.dims))
+                mask = mask.where((depth>mld).transpose(*mask.dims))
             else:
                 dim_order = []
-                if 't' in mld.dims:
+                if 't' in mask.dims:
                     dim_order.append('t')
-                for i in range(1,len(mask.dims)):
+                    t=1
+                else:
+                    t=0
+                for i in range(t,len(mask.dims)):
                     if mask.dims[i] in mld.dims or mask.dims[i]==dim_z:
                         dim_order.append(mask.dims[i])
-                mask = mask.where((mask[dim_z] > mld).transpose(*tuple(dim_order)))
+                mask = mask.where((depth > mld).transpose(*tuple(dim_order)))
         return mask
 
+    def sign_mask(self, da, invert=False, **kwargs):
+        """
+
+        :param da: Dataarray to be applied on
+        :param invert: If True, the mixed layer is masked to return below mld values only
+
+        :return: nan-mask for values greater/smaller zero
+        """
+        mask = da.copy(data=da.values * 0 + 1).rename('sign_mask')
+
+        if not invert:
+            mask = mask.where(da > 0)
+
+        elif invert:
+            mask = mask.where(da < 0)
+        return mask
+    
+    def eq_mask(self, da, eq_scale=0.5):
+        """Return mask where the equator is scaled with a specified value. Standard is 0.5"""
+        dims = self._get_dims(da)
+        if 'y_f' in dims:
+            print('Data is on V-point, no mask will be applied')
+            return 1
+        elif 'y_c' not in dims:
+            print('Data does not have a proper y-dimension')
+            return 1
+        else:
+            mask_axes = {ax: np.ones(da.sizes[ax]) for ax in dims}
+            mask_axes['y_c'][1] *= eq_scale
+            return xr.DataArray(np.prod(np.meshgrid(*mask_axes.values(), indexing='ij'), axis=0),
+                                dims=dims,
+                                coords=dict(zip(dims,[da.coords[d] for d in dims])))
+
+    def get_depth_from_metric(self, da, surface=None, **kwargs):
+        """Return depth calculated from the grid metrics"""
+        
+        kwargs = {**self.boundary, **kwargs}
+        pos = self._get_position(da)
+        
+        if pos == 'T':
+            try:
+                mw=self._get_metric_by_pos('Z','W')[0]
+            except:
+                raise Exception("W-Point metric is missing, required to calculate depth.")
+            
+            depth = self.grid.cumsum(mw,'Z',**kwargs)
+            if surface:
+                depth -= surface
+            else:
+                mt = self._get_metric_by_pos('Z','T')[0]
+                if 't' in mt.dims:
+                    depth -= 0.5*mt.mean('t').isel({self.grid._get_dims_from_axis(mt,'Z')[0]:0})
+                else:
+                    depth -= 0.5*mt.isel({self.grid._get_dims_from_axis(mt,'Z')[0]:0})
+                    
+                    
+        elif pos == 'W':
+            try:
+                mt=self._get_metric_by_pos('Z','T')[0]
+            except:
+                raise Exception("T-Point metric is missing, required to calculate depth.")
+            
+            depth = self.grid.cumsum(mt,'Z',**kwargs)
+            if surface:
+                depth -= surface
+            """
+            else:
+                mw = self._get_metric_by_pos('Z','W')[0]
+                if 't' in mt.dims:
+                    depth += 0.5*mw.mean('t').isel({self.grid._get_dims_from_axis(mw,'Z')[0]:0})
+                else:
+                    depth += 0.5*mw.isel({self.grid._get_dims_from_axis(mw,'Z')[0]:0})
+            """        
+        return depth
+        
     def remap_numpy(self, da, depth_fr, depth_to):
         # Check dimensions and extract dimensions of the data with separation of the Z coordinate
         if self._matching_dim(da, depth_fr):
@@ -687,6 +840,7 @@ class Grid_ops:
 
         Uses the xgcm derivative function
         """
+
         return self.grid.derivative(da, axis, **dict(self.boundary, **kwargs))
 
     def interp(self, da, axis, **kwargs):
@@ -855,7 +1009,7 @@ class Grid_ops:
 
         return y
 
-    def average(self, P, axes, boundary=None, **maskargs):
+    def average(self, P, axes, boundary=None, Vmask=None, **kwargs):
         """
         Compute the weighted average of a variable along the specified axes.
         The weights are taken from the metric provided through the grid object.
@@ -863,21 +1017,40 @@ class Grid_ops:
         P_average = Sum( P * m ) / Sum( m )
         With P the variable and m the respective weight
         """
+        
+        skip=0
+        if 't' in P.dims:
+            skip=1
+        
+        if len(P.dims[skip:]) in [1,0]:
+            case = 'smallest'
+        else:# len(P.dims[skip:])==3:
+            case = 'largest'
+            
         # Get metric from xgcm grid
+        pos = self._get_position(P)
         dims = self.grid._get_dims_from_axis(P, axes)
+        if P.dims != self._get_dims_order(P):
+            P = P.transpose(*self._get_dims_order(P))
         if boundary is None:
-            m = self.grid.get_metric(P, axes)
+            m = self._get_metric_by_pos(axes, pos ,combine=True, case=case)[0]
         else:
-            m = self.grid.get_metric(P, axes)[{dims[i]: slice(*boundary[axes[i]]) for i in range(len(axes))}]
-            P = P[{dims[i]: slice(*boundary[axes[i]]) for i in range(len(axes))}]
+            for ax in axes:
+                if ax not in boundary:
+                    boundary[ax] = [None,None]
+            m = self._get_metric_by_pos(axes, pos ,combine=True)[0].sel(
+                {dims[i]: slice(*boundary[axes[i]]) for i in range(len(axes))})
+            P = P.sel({dims[i]: slice(*boundary[axes[i]]) for i in range(len(axes))})
 
         # Get and apply mask
-        mask = self._get_mask(P,**maskargs)
-        P = P * mask
-        m = m * mask
-
+        mask = self._get_mask(P,**kwargs)
+        # P = P * mask
+        if Vmask is None:
+            m = m * mask
+        else:
+            m = m * Vmask
         # Average along specified axes
-        dims = self.grid._get_dims_from_axis(P, axes)
+        #dims = self.grid._get_dims_from_axis(P, axes)
         P_av = (P * m).sum(dims) / m.sum(dims)
 
         return P_av

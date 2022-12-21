@@ -33,15 +33,11 @@ class Tracers:
                 self.trends_S.append(process)
 
     def temperature_trend(self, **kwargs):
-
-        processes_keys = ['xad', 'yad', 'zad', 'ad',  'ldf', 'zdf', 'evd', 'iso', 'zdfp', 'dmp',
-                          'bbl', 'npc', 'qns', 'qsr', 'bbc']
+        
         T_trends = dict()
         for i in list(kwargs.keys()):
-            if i not in processes_keys:
-                print('Invalid keyword {}'.format(i))
-            elif i in processes_keys and i not in self.trends_T:
-                print('Process {} is deactivated but still given'.format(i))
+            if i not in self.trends_T:
+                print('Process is deactivated or invalid keyword {}'.format(i))
         for i in self.trends_T:
             T_trends[i] = kwargs.get(i, None)
         loc = locals()
@@ -56,14 +52,10 @@ class Tracers:
 
     def salinity_trend(self, **kwargs):
 
-        processes_keys = ['xad', 'yad', 'zad', 'ad', 'ldf', 'zdf', 'evd', 'iso', 'zdfp', 'dmp',
-                          'bbl', 'npc','cdt']
         S_trends = dict()
         for i in list(kwargs.keys()):
-            if i not in processes_keys:
-                print('Invalid keyword {}'.format(i))
-            elif i in processes_keys and i not in self.trends_S:
-                print('Process {} is deactivated but still given'.format(i))
+            if i not in self.trends_S:
+                print('Process is deactivated or invalid keyword {}'.format(i))
         for i in self.trends_S:
             S_trends[i] = kwargs.get(i, None)
         loc = locals()
