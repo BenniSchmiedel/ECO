@@ -38,7 +38,7 @@ CLASSIFIERS = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
 ]
-INSTALL_REQUIRES = ["xarray", "dask", "numpy", "pythran>=0.9.5"]
+INSTALL_REQUIRES = ["xarray", "dask", "numpy", "pythran>=0.9.5", "gsw", "xnemogcm", "configparser", ]
 DESCRIPTION = "A diagnostics package for the Energy Cycle of the Ocean"
 PYTHON_REQUIRES = ">=3.6"
 
