@@ -1,9 +1,9 @@
-from ECOdyagnostics import Grid_ops
+from ECOdiagnostics import Grid_ops
 import xarray as xr
 import xgcm
 import numpy as np
 import warnings
-from ECOdyagnostics._remapping import _compute_depth_of_shifted_array
+from ECOdiagnostics._remapping import _compute_depth_of_shifted_array
 
 import pytest
 

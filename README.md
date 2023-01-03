@@ -1,4 +1,4 @@
-# ECOdyagnostics
+# ECOdiagnostics
 A diagnostics Package for the Energy Cycle of the Ocean. 
 It builds on the fundamental descriptions of energy in the ocean, 
 applied to numerical ocean model simulation data. Various theoretical considerations of energy

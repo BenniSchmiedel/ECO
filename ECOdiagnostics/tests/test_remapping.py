@@ -1,6 +1,6 @@
 import xarray as xr
 import xgcm
-from ECOdyagnostics import remap_vertical
+from ECOdiagnostics import remap_vertical
 import numpy as np
 import warnings
 
@@ -87,7 +87,7 @@ def open_ds():
 
 
 def test_reshaping():
-    from ECOdyagnostics._remapping import _shape_to_shape_of_len_4 as _s
+    from ECOdiagnostics._remapping import _shape_to_shape_of_len_4 as _s
 
     assert _s((2, 2, 2, 2)) == (2, 2, 2, 2)
     assert _s((2, 2, 2)) == (2, 2, 2, 1)
