@@ -129,6 +129,7 @@ class Grid_ops:
                 p= p.transpose(*dims)
                 
         return dV
+        
     def _combine_metric(self, da, axes, skip=None):
         """
         Returns the product of metrics corresponding to the respective datavariable.
@@ -187,17 +188,18 @@ class Grid_ops:
                         
             if not check:
                 raise Exception("No matching metric was found on axis %s for position %s" % (ax, pos))
-        metric_out = list(metric_out.values())
-        metric_out_dims = list(metric_out_dims.values())
 
+        metric_out = list(metric_out.values())
+        metric_out_order = np.argsort([len(metric_out_dims[ax]) for ax in axes])[::-1]
         if combine and len(metric_out)>1:
-            metric = 1
-            try:
-                for m in [metric_out[i] for i in np.argsort(metric_out_dims,axis=0)[::-1]]:
-                    metric *= m
-            except:
-                for m in [metric_out[i[0]]for i in np.argsort(metric_out_dims,axis=0)[::-1]]:
-                    metric *= m
+            metric=None
+            for i in metric_out_order:
+                if metric is None:
+                    try: metric = metric_out[i]
+                    except: metric = metric_out[i[0]]
+                else:
+                    try: metric *= metric_out[i]
+                    except: metric *= metric_out[i[0]]
             
             name = '_'.join(['{}']*len(metric_out)).format(*tuple(m.name for m in metric_out))
             metric_out = [metric.rename(name)]  
@@ -225,10 +227,10 @@ class Grid_ops:
         t = False
         if da.dims[0]=='t':
             t=True
-            mask = np.zeros(da.shape[1:])
+            mask = xr.zeros_like(da.isel(t=0))
             da_ref = da[0]
         else:
-            mask = np.zeros(da.shape)
+            mask = xr.zeros_like(da)
             da_ref = da
         x_len=da_ref.shape[2]
         y_len=da_ref.shape[1]
@@ -654,19 +656,17 @@ class Grid_ops:
         """
         Create a mask of a data variable with 0 where the data is 0 or nan and 1 everywhere else.
         """
-        da_one = da * 0 + 1
-        da_one = da_one.where(np.isfinite(da), other=0)
-        da_one = da_one.where(da != 0, other=0)
-        mask = xr.DataArray(da_one.values, coords={dim: da[dim].values for dim in da.dims}, dims=da.dims)
+        mask = xr.zeros_like(da).rename('zero_mask')
+        mask = mask.where(np.logical_or(da==0,np.isnan(da)) , other=1)
+
         return mask
 
     def nan_mask(self, da):
         """
         Create a mask of a data variable with nan where the data is 0 and 1 everywhere else.
         """
-        da_one = da * 0 + 1
-        da_one = da_one.where(da != 0)
-        mask = xr.DataArray(da_one.values, coords={dim: da[dim].values for dim in da.dims}, dims=da.dims)
+        mask = xr.ones_like(da).rename('nan_mask')
+        mask = mask.where(np.logical_or(da!=0,np.isinf(da)))
         return mask
 
     def mld_mask(self, da, mld, invert=False, **kwargs):
@@ -678,7 +678,7 @@ class Grid_ops:
 
         :return: nan-mask for values below the mixed layer depth
         """
-        mask = da.copy(data=da.values * 0 + 1).rename('mld_mask')
+        mask = xr.ones_like(da).rename('mld_mask')
         dim_z = self.grid._get_dims_from_axis(mask,'Z')[0]
         depth = self.get_depth_from_metric(da, **kwargs)
         if not invert:
@@ -719,11 +719,10 @@ class Grid_ops:
 
         :return: nan-mask for values greater/smaller zero
         """
-        mask = da.copy(data=da.values * 0 + 1).rename('sign_mask')
+        mask = xr.ones_like(da).rename('sign_mask')
 
         if not invert:
             mask = mask.where(da > 0)
-
         elif invert:
             mask = mask.where(da < 0)
         return mask
@@ -1009,7 +1008,7 @@ class Grid_ops:
 
         return y
 
-    def average(self, P, axes, boundary=None, Vmask=None, **kwargs):
+    def average(self, P, axes, boundary=None, Vmask=None, keepna=True, **kwargs):
         """
         Compute the weighted average of a variable along the specified axes.
         The weights are taken from the metric provided through the grid object.
@@ -1017,7 +1016,7 @@ class Grid_ops:
         P_average = Sum( P * m ) / Sum( m )
         With P the variable and m the respective weight
         """
-        
+
         skip=0
         if 't' in P.dims:
             skip=1
@@ -1049,8 +1048,9 @@ class Grid_ops:
             m = m * mask
         else:
             m = m * Vmask
-        # Average along specified axes
-        #dims = self.grid._get_dims_from_axis(P, axes)
-        P_av = (P * m).sum(dims) / m.sum(dims)
 
+        # Average along specified axes
+        P_av = (P * m).sum(dims) / (m.sum(dims)+1e-16)
+        if np.isnan(P).any() and keepna:
+            P_av = P_av.where(P_av!=0)
         return P_av

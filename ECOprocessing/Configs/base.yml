@@ -1,0 +1,73 @@
+processing:
+    # Path setup
+    exp_in       : EXP00_d
+    exp_out      : EXP00_d
+    nemo_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    domain_path  : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    output_path  : ../ECOanalysis/data/              
+    
+    # Runtime setup
+    type         : parallel
+    n_cores      : 8              
+    
+    # Processing setup
+    timesteps       : 360
+    spinup          : no   # overwrite key to process zg and moc only
+    dynamics        : yes
+    kinetic_energy  : no
+    wind_input      : yes
+    postprocessing  : yes
+
+    #xgcm setup
+    xgcm:
+        boundary: fill
+        fill_value: 0
+
+preprocessing:
+    # Renaming through xnemogcm
+    override          : no                # When no, it tries to import from before renamed output first in the location of "output_path/exp_out" or "nemo_path/exp_in"   
+    export_to         : "output_path"     # Options are "output_path" and "nemo_path"
+    
+    # Masking, by index
+    boundary_mask: 
+        Z: 
+            - -1
+        Y: 
+            - 0
+            - -1
+        X: 
+            - 0
+            - -1
+
+simulation:
+    # simulation equation of state
+    eos:
+        thermal_expansion   : 0.1655
+        haline_expansion    : 0.76554
+        cabbeling_T         : 5.952e-2
+        cabbeling_S         : 7.4914e-4
+        cabbeling_TS        : 2.4341e-3
+        thermobaric_T       : -1.497e-4
+        thermobaric_S       : -1.109e-5
+
+    # trends (that are available and should be processed)
+    T_trends :
+        - ldf
+        - zdf
+        - qns
+        - qsr
+        - atf
+
+    S_trends :
+        - ldf
+        - zdf
+        - cdt
+        - atf
+
+    K_trends : 
+        - convP2K
+        - tau
+    
+
+
+
