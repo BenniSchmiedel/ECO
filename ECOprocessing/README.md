@@ -17,4 +17,4 @@ In this case, the appropriate execution of the script is:
 **-c:** The name of the sub-configuration
 
 >  **Important**   
-The script provided is optimized for an idealized box-model configuration.<br> Processing of other nemo configuration require adaptation of the function ECO_processing.prepare_dataset(), which handles metrics and coundary masking.
+The script provided is optimized for an idealized box-model configuration.<br> Processing of other nemo configuration require adaptation of the function ECO_processing.prepare_dataset(), which handles metrics and boundary masking.

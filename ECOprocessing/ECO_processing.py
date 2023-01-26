@@ -7,7 +7,6 @@ sys.path.insert(1, os.path.abspath('..') )
 import ECOdiagnostics as eco
 from ECOdiagnostics.utils import drop_from_dict, split_by_chunks, str_or_none, get_number_of_chunks, existing_files_handler, config_parser
 from xnemogcm import open_nemo_and_domain_cfg, get_metrics
-from xbasin.stream_functions import compute_moc
 
 import numpy as np
 import xgcm
@@ -179,7 +178,7 @@ def process():
         energetics_trend=eco.Energetics_trends(grid_ops, properties,'Configs/processes_spinup.ini')
     else:
         energetics_trend=eco.Energetics_trends(grid_ops, properties,'Configs/processes.ini')
-    
+    transport = eco.Transport(grid_ops)
 
     maskargs= {'mask':'usr_def','mask_values':ds.mask_bd_t}
 
@@ -320,7 +319,7 @@ def process():
 
     print('Diagnose Meridional Overturning Streamfunction')
     
-    psi = compute_moc(ds.vo,grid)
+    psi = transport.compute_moc(ds.vo)
     psi = psi.chunk({d: ds.chunks[d] for d in psi.dims})  # To fix an error in y-chunks 
     ds_proc['psi'] = psi
     ds_proc['psi_maxz'] = psi.max('z_f')

@@ -118,3 +118,18 @@ class Transport:
                 mask = mask.where(case_data > condition, other=np.nan)
 
         return mask
+
+    def compute_moc(self, v, X="X", Z="Z"):
+        psi = self._compute_moc_with_v_at_cst_depth(v, X="X", Z="Z")
+        return psi
+
+    def _compute_moc_with_v_at_cst_depth(self, v, X="X", Z="Z"):
+        """
+        Compute the meridional overturning streamfunction.
+        """
+        v_x_dx = self.ops.grid.integrate(v, axis=X)  # (vo_to * domcfg_to['y_f_dif']).sum(dim='x_c')
+        # integrate from top to bot
+        psi = self.ops.grid.cumint(v_x_dx, axis=Z, boundary="fill", fill_value=0) * 1e-6
+        # convert -> from bot to top
+        psi = psi - psi.isel({self.ops.grid._get_dims_from_axis(psi,Z)[0]: -1})
+        return psi
