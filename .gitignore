@@ -30,6 +30,20 @@ var/
 .installed.cfg
 *.egg
 .pytest_cache
+*.out
+*.vscode
 
 # Sphinx doc
 docs/_build
+
+# Processed data
+ECOanalysis/data/*
+!ECOanalysis/data/EXP00_test/
+
+# Configs
+ECOprocessing/Configs/*
+!ECOprocessing/Configs/base.yml
+!ECOprocessing/Configs/processes*
+!ECOprocessing/Configs/EXP00_test
+# commit message
+message.txt

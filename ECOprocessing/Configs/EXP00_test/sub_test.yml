@@ -1,0 +1,24 @@
+simulation:
+    # simulation equation of state
+    eos:
+        thermal_expansion   : 0.1655
+        haline_expansion    : 0.76554
+        cabbeling_T         : 5.952e-2
+        cabbeling_S         : 0
+        cabbeling_TS        : 0
+        thermobaric_T       : -1.497e-4
+        thermobaric_S       : 0
+
+    # trends (that are available and should be processed)
+
+preprocessing:
+    # Renaming through xnemogcm
+    prioritize_existing  : yes
+    allow_rechunk        : yes                # When yes force renaming  
+    export_to            : "output_path"
+
+processing:
+    # Processing setup
+    time_start      : 0
+    time_stop       : 30
+

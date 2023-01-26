@@ -73,7 +73,7 @@ class Energetics:
         SA = S
         return gsw.internal_energy(SA,CT,p)
 
-    def dynamic_enthalpy(self,  T, S, Z, eos=None, Z_r=0, T_ref=10, S_ref=35, output_position=None, **kwargs):
+    def dynamic_enthalpy(self,  T, S, Z, Z_r=0, T_ref=10, S_ref=35, output_position=None, **kwargs):
         if not output_position:
             output_position = self.position_out
 
@@ -81,67 +81,29 @@ class Energetics:
         g = self.properties.constants['g']
         rho0 = self.properties.constants['rho0']
 
-        a0 = self.properties.ocean_properties['thermal_expansion']
-        b0 = self.properties.ocean_properties['haline_expansion']
-        lambda1 = self.properties.ocean_properties['cabbeling_T']
-        lambda2 = self.properties.ocean_properties['cabbeling_S']
-        nu = self.properties.ocean_properties['cabbeling_TS']
-        mu1 = self.properties.ocean_properties['thermobarric_T']
-        mu2 = self.properties.ocean_properties['thermobarric_S']
-        dT = T - T_ref
-        dS = S - S_ref
-
+        a0 = self.properties.eos_properties['thermal_expansion']
+        b0 = self.properties.eos_properties['haline_expansion']
+        lambda1 = self.properties.eos_properties['cabbeling_T']
+        lambda2 = self.properties.eos_properties['cabbeling_S']
+        nu = self.properties.eos_properties['cabbeling_TS']
+        mu1 = self.properties.eos_properties['thermobaric_T']
+        mu2 = self.properties.eos_properties['thermobaric_S']
+        
         mask = self.ops._get_mask(T, **kwargs)
 
         Z = Z * mask
-        
-        if not eos:
-            eos = self.eos
-        if eos == '2eos':
-            def h(dT, dS, Z):
-                h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0 * (1+lambda2/2*dS) * dS - nu*dT*dS) * (Z_r - Z)
-                        + 0.5 * (-a0*mu1*dT + b0*mu2*dS) * (Z_r**2 - Z**2))
-                return h
+        dT = (T - T_ref)*mask
+        dS = (S - S_ref)*mask
 
-        elif eos == 'seos':
-            def h(dT, dS, Z):
-                h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0*dS) * (Z_r - Z)
-                        - 0.5*a0*mu1*dT * (Z_r**2 - Z**2))
-                return h
-
-        elif eos == 'leos':
-            def h(dT, dS, Z):
-                alpha = self.properties.ocean_properties['thermal_expansion_lin']
-                beta = self.properties.ocean_properties['haline_expansion_lin']
-
-                h = - ( - alpha*dT + beta*dS ) * (Z_r-Z) * g
-                return h
-
-
-        """if 't' in T.dims:
-            h = np.zeros(T.shape)#b.copy(data=np.zeros(b.shape()))
-        else:
-            h = np.zeros(T.shape)"""
-        """for x in range(self.properties.coords['X'].shape[0]):
-            for y in range(self.properties.coords['Y'].shape[0]):
-                for z in range(self.properties.coords['Z'].shape[0]):
-
-                    if T.dims[0]=='t':
-                        if np.all(np.isnan(T[:,z,y,x])):
-                            pass
-                        else:
-                            h[:,z,y,x] = b(T[:,z,y,x],S[:,z,y,x],Z[:,z,y,x])#.sum(self.ops.grid._get_dims_from_axis(T,'Z')) #* Z[:,z,y,x]
-                    elif T.dims[0] == 'z':
-                        if np.all(np.isnan(T[z, y, x])):
-                            pass
-                        else:
-                            h[z, y, x] = b(T[z, y, x], S[z, y, x], Z[z, y, x])#.sum(
-                                #self.ops.grid._get_dims_from_axis(T, 'Z'))  # * Z[:,z,y,x]"""
-        #h = T.copy(data= h )
-        h = h(dT,dS,Z)
-        if self.ops._matching_pos(h, output_position):
+        def h(dT, dS, Z):
+            h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0 * (1+lambda2/2*dS) * dS - nu*dT*dS) * (Z_r - Z)
+                    + 0.5 * (-a0*mu1*dT + b0*mu2*dS) * (Z_r**2 - Z**2))
             return h
 
+        h = h(dT,dS,Z)
+
+        if self.ops._matching_pos(h, output_position):
+            return h
         else:
             return self.ops._shift_position(h, output_position)
 
@@ -175,7 +137,7 @@ class Energetics:
         # Return center of gravity
         return TPE_full / (g * mass_full)
 
-    def center_of_gravity_h(self, T, S, z, eos, Z_r=0, T_ref=10, S_ref=35, output_position='T', **kwargs):
+    def center_of_gravity_h(self, T, S, z, Z_r=0, T_ref=10, S_ref=35, output_position='T', **kwargs):
         """
         Computes the position of the center of mass.
         Returns the location for each axis. Operates on a 1D or 3D grid.
@@ -192,7 +154,7 @@ class Energetics:
             Exception('depth has the wrong position {}. Please provide a depth on T position.'.format(self.ops._get_position(z)))
 
         #Compute dynamic_enthalpy
-        h = self.dynamic_enthalpy(T, S, z, eos=eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref, output_position=output_position, **kwargs)
+        h = self.dynamic_enthalpy(T, S, z, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref, output_position=output_position, **kwargs)
         
         #Check dimension, 1D and 3D valid
         skip=0

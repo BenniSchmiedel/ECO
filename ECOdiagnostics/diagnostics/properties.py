@@ -5,22 +5,20 @@ class Properties:
     def __init__(self,
                  grid_ops,
                  coords,
-                 ocean_properties=None
+                 eos_properties=None
                  ):
         self.ops = grid_ops
-        if not ocean_properties:
-            self.ocean_properties={'thermal_expansion_lin': 2e-4,
-                                   'haline_expansion_lin' : 8e-4,
-                                   'thermal_expansion': 0.1655,
+        if not eos_properties:
+            self.eos_properties={'thermal_expansion': 0.1655,
                                    'haline_expansion' : 0.76554,
                                    'cabbeling_T' : 5.952e-2,
                                    'cabbeling_S' : 7.4914e-4,
                                    'cabbeling_TS' : 2.4341e-3,
-                                   'thermobarric_T' : -1.497e-4,
-                                   'thermobarric_S' : -1.109e-5
+                                   'thermobaric_T' : -1.497e-4,
+                                   'thermobaric_S' : -1.109e-5
                                     }
         else:
-            self.ocean_properties=ocean_properties
+            self.eos_properties=eos_properties
             
         self.constants = {'g': 9.81,
                           'rho0': 1026}
@@ -32,9 +30,8 @@ class Properties:
         Horizontal anomalies are defined to be the anomaly compared to a horizontal mean.
         """
         P_hm = self.horizontal_mean(P, Vmask=Vmask, **kwargs)
-        P_ha = P - P_hm
 
-        return P_ha
+        return  P - P_hm
 
     def horizontal_mean(self, P, Vmask=None, **kwargs):
         """
@@ -54,7 +51,7 @@ class Properties:
 
         return P_gm
 
-    def density(self, T, S, eos, T_ref=10, S_ref=35, rho0 = 1026, out = None, **kwargs):
+    def density(self, T, S, Z, T_ref=10, S_ref=35, rho0 = 1026, out = None, **kwargs):
         """
         Returns the non-linear sea water density defined by Roquet et al 2015a
 
@@ -70,38 +67,22 @@ class Properties:
             thermobar. coef.      rn_mu2     =   1.10900E-005
             2nd cabbel. coef.     rn_nu      =   2.43410E-003
         """
-        a0 = self.ocean_properties['thermal_expansion']
-        b0 = self.ocean_properties['haline_expansion']
-        lambda1 = self.ocean_properties['cabbeling_T']
-        lambda2 = self.ocean_properties['cabbeling_S']
-        nu = self.ocean_properties['cabbeling_TS']
-        mu1 = self.ocean_properties['thermobarric_T']
-        mu2 = self.ocean_properties['thermobarric_S']
 
-        if kwargs:
-            T *= self.ops._get_mask(T, **kwargs)
-            S *= self.ops._get_mask(S, **kwargs)
-            
-        if eos == '2eos':
-            Z = self.coords['Z']
-            dT = T - T_ref
-            dS = S - S_ref
-            rhd = (-a0 * (1 + lambda1 / 2 * dT + mu1 * Z) * dT
+        a0 = self.eos_properties['thermal_expansion']
+        b0 = self.eos_properties['haline_expansion']
+        lambda1 = self.eos_properties['cabbeling_T']
+        lambda2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
+        mu1 = self.eos_properties['thermobaric_T']
+        mu2 = self.eos_properties['thermobaric_S']
+
+        mask = self.ops._get_mask(T, **kwargs)    
+        Z = Z * mask
+        dT = (T - T_ref)*mask
+        dS = (S - S_ref)*mask
+
+        rhd = (-a0 * (1 + lambda1 / 2 * dT + mu1 * Z) * dT
                    + b0 * (1 - lambda2 / 2 * dS - mu2 * Z) * dS - nu * dT * dS) /rho0
-
-        elif eos == 'seos':
-            Z = self.coords['Z']
-            dT = T - T_ref
-            dS = S - S_ref
-            rhd = (-a0 * (1 + lambda1 / 2 * dT + mu1 * Z) * dT
-                   + b0 * dS ) / rho0
-
-        elif eos == 'leos':
-            alpha = self.ocean_properties['thermal_expansion_lin']
-            beta = self.ocean_properties['haline_expansion_lin']
-            dT = T - T_ref
-            dS = S - S_ref
-            rhd = - alpha * dT + beta * dS
 
         if out=='horizontal':
             rhd = self.horizontal_mean(rhd, **kwargs)
@@ -126,14 +107,14 @@ class Properties:
             T = self.ops._shift_position(T, 'W')
         
         if eos=='seos':
-            alpha = self.ocean_properties['thermal_expansion']
-            beta = self.ocean_properties['haline_expansion']
+            alpha = self.eos_properties['thermal_expansion']
+            beta = self.eos_properties['haline_expansion']
         elif eos=='2eos':
-            alpha = self.ocean_properties['thermal_expansion']
-            beta = self.ocean_properties['haline_expansion'] 
+            alpha = self.eos_properties['thermal_expansion']
+            beta = self.eos_properties['haline_expansion'] 
         elif eos=='leos':
-            alpha = self.ocean_properties['thermal_expansion_lin']
-            beta = self.ocean_properties['haline_expansion_lin']
+            alpha = self.eos_properties['thermal_expansion_lin']
+            beta = self.eos_properties['haline_expansion_lin']
 
         return g/e3 *(beta * self.ops.grid.diff(S, 'Z', boundary='fill', fill_value=0) -
                       alpha * self.ops.grid.diff(T, 'Z', boundary='fill', fill_value=0))
@@ -150,13 +131,13 @@ class Properties:
         g = self.constants['g']
         rho0 = self.constants['rho0']
 
-        a0 = self.ocean_properties['thermal_expansion']
-        b0 = self.ocean_properties['haline_expansion']
-        lambda1 = self.ocean_properties['cabbeling_T']
-        lambda2 = self.ocean_properties['cabbeling_S']
-        nu = self.ocean_properties['cabbeling_TS']
-        mu1 = self.ocean_properties['thermobarric_T']
-        mu2 = self.ocean_properties['thermobarric_S']
+        a0 = self.eos_properties['thermal_expansion']
+        b0 = self.eos_properties['haline_expansion']
+        lambda1 = self.eos_properties['cabbeling_T']
+        lambda2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
+        mu1 = self.eos_properties['thermobaric_T']
+        mu2 = self.eos_properties['thermobaric_S']
 
         dT = T - T_ref
         dS = S - S_ref
@@ -166,9 +147,6 @@ class Properties:
             dh_T = - g/rho0 * ((-a0*(1+lambda1*dT) - nu*dS)*(Z_r- Z) - 0.5*a0*mu1*(Z_r**2-Z**2) )
         elif eos == 'seos':
             dh_T = - g/rho0 * (-a0*(1+lambda1*dT)*(Z_r- Z) - 0.5*a0*mu1*(Z_r**2-Z**2) )
-        elif eos == 'leos':
-            alpha = self.ocean_properties['thermal_expansion_lin']
-            dh_T =  alpha * g * (Z_r - Z)
         return dh_T
 
     def dh_S(self, T, S, Z, eos, Z_r=0, T_ref=10, S_ref=35):
@@ -182,13 +160,13 @@ class Properties:
         g = self.constants['g']
         rho0 = self.constants['rho0']
 
-        a0 = self.ocean_properties['thermal_expansion']
-        b0 = self.ocean_properties['haline_expansion']
-        lambda1 = self.ocean_properties['cabbeling_T']
-        lambda2 = self.ocean_properties['cabbeling_S']
-        nu = self.ocean_properties['cabbeling_TS']
-        mu1 = self.ocean_properties['thermobarric_T']
-        mu2 = self.ocean_properties['thermobarric_S']
+        a0 = self.eos_properties['thermal_expansion']
+        b0 = self.eos_properties['haline_expansion']
+        lambda1 = self.eos_properties['cabbeling_T']
+        lambda2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
+        mu1 = self.eos_properties['thermobaric_T']
+        mu2 = self.eos_properties['thermobaric_S']
 
         dT = T - T_ref
         dS = S - S_ref
@@ -196,9 +174,6 @@ class Properties:
             dh_S = - g/rho0 * ((b0*(1-lambda2*dS) - nu*dT)*(Z_r- Z) - 0.5*b0*mu2*(Z_r**2-Z**2) )
         elif eos == 'seos':
             dh_S = - g/rho0 * b0 * (Z_r - Z)
-        elif eos == 'leos':
-            beta = self.ocean_properties['haline_expansion_lin']
-            dh_S = - beta * g * (Z_r - Z)
         return dh_S
 
     def center_of_mass(self, rho, boussinesq=False, coords=None, mask=None):
