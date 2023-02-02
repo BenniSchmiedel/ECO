@@ -397,7 +397,8 @@ if __name__ == '__main__':
     import argparse
     from dask_jobqueue import SLURMCluster
     from dask.distributed import Client
-
+    from dask.distributed.client import  _get_global_client
+    
     # Parse arguments from script execution
     parser = argparse.ArgumentParser(description='ECO Processing script.')
     parser.add_argument('-sub_config','-c','--c', type=str_or_none, default=None)
@@ -418,6 +419,7 @@ if __name__ == '__main__':
         debugpy.breakpoint()
 
     # Initialize dask cluster and client
+    os.environ["MALLOC_TRIM_THRESHOLD_"] = '0'
     cluster = SLURMCluster(cores=kwargs_proc['n_cores'],
                             processes=kwargs_proc['n_processes'],
                             memory=kwargs_proc['memory'],
@@ -427,7 +429,7 @@ if __name__ == '__main__':
                             local_directory=kwargs_proc['local_directory'])
     if kwargs_proc['n_jobs']>1:
         cluster.scale(jobs=kwargs_proc['n_jobs'])
-    client = Client(cluster)
+    client = _get_global_client() or Client(cluster)
     print('Dask setup finished')
 
     # Run processing

@@ -1,22 +1,31 @@
 processing:
     # Path setup
-    exp_in       : EXP00_d
-    exp_out      : EXP00_d
-    nemo_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
-    domain_path  : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
-    output_path  : ../ECOanalysis/data/              
-    
-    # Runtime setup
-    type         : parallel
-    n_cores      : 8              
-    
+    exp_in         : EXP00_d
+    exp_out        : EXP00_test
+    nemo_path      : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    domain_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    output_path    : ../ECOanalysis/data/              
+    data_override  : yes
+
+    # dask setup
+    n_cores         : 8 
+    n_processes     : 8 
+    n_workers       : 1  
+    n_chunks        : 4     # Determines chunksize and number of output files
+    n_jobs          : 1
+    memory          : 50GB
+    account         : snic2022-22-376
+    max_chunksize   : 2GiB  # Provide as string, either as GiB or MiB
+    local_directory : /scratch/local
+
     # Processing setup
-    timesteps       : 360
+    time_start      : 0
+    time_stop       : 3600
     spinup          : no   # overwrite key to process zg and moc only
     dynamics        : yes
     kinetic_energy  : no
     wind_input      : yes
-    postprocessing  : yes
+    postprocessing  : no
 
     #xgcm setup
     xgcm:
@@ -25,8 +34,9 @@ processing:
 
 preprocessing:
     # Renaming through xnemogcm
-    override          : no                # When no, it tries to import from before renamed output first in the location of "output_path/exp_out" or "nemo_path/exp_in"   
-    export_to         : "output_path"     # Options are "output_path" and "nemo_path"
+    prioritize_existing  : yes
+    allow_rechunk        : yes               # When yes force renaming  
+    export_to            : "output_path"     # Options are "output_path" and "nemo_path"
     
     # Masking, by index
     boundary_mask: 
@@ -39,7 +49,20 @@ preprocessing:
             - 0
             - -1
 
+    # Variables to pass through to the new dataset
+    vars_to_pass:      # Key is the variables original name, value the new name
+        mldr10_1: mld
+        zos     : zos
+        so      : so
+        thetao  : to
+        woce    : wo
+        woce_eiv: wo_e
+        avt_evd : k_evd
+
 simulation:
+    # Namelist
+    get_namelist: yes
+    
     # simulation equation of state
     eos:
         thermal_expansion   : 0.1655

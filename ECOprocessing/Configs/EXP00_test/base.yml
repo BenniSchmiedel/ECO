@@ -60,6 +60,9 @@ preprocessing:
         avt_evd : k_evd
 
 simulation:
+    # Namelist
+    get_namelist: yes
+    
     # simulation equation of state
     eos:
         thermal_expansion   : 0.1655

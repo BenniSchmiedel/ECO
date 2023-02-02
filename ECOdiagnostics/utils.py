@@ -156,6 +156,9 @@ def config_parser(config_path='Configs/', sub_config=None ,log=False):
         else:
             print('Subconfiguration %s does not exist'%(sub_config))
 
+    if kwargs_sim['get_namelist']:
+        kwargs_sim['namelist'] = get_namelist(path = "%s/%s"%(kwargs_proc['nemo_path'], kwargs_proc['exp_in']))
+
     if log:
         print("Input: %s"                    % kwargs_proc['exp_in'])
         print("Output: %s"                   % kwargs_proc['exp_out'])
@@ -171,3 +174,9 @@ def config_parser(config_path='Configs/', sub_config=None ,log=False):
         print("Postprocess: %s"              % kwargs_proc['postprocessing'])
 
     return kwargs_proc, kwargs_pre, kwargs_sim
+
+def get_namelist(path = None):
+    import f90nml
+    nml = f90nml.read(path+'/namelist_ref')
+    nml_cfg = f90nml.read(path+'/namelist_cfg_run')
+    return {**nml, **nml_cfg}

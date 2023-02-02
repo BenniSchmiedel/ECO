@@ -119,39 +119,8 @@ class Properties:
         return g/e3 *(beta * self.ops.grid.diff(S, 'Z', boundary='fill', fill_value=0) -
                       alpha * self.ops.grid.diff(T, 'Z', boundary='fill', fill_value=0))
 
-    def dh_T(self, T, S, Z, eos, Z_r=0, T_ref=10, S_ref=35):
+    def dh_T(self, T, S, Z, Z_r=0, T_ref=10, S_ref=35):
         """
-
-        :param T:
-        :param S:
-        :param eos:
-        :return:
-        """
-
-        g = self.constants['g']
-        rho0 = self.constants['rho0']
-
-        a0 = self.eos_properties['thermal_expansion']
-        b0 = self.eos_properties['haline_expansion']
-        lambda1 = self.eos_properties['cabbeling_T']
-        lambda2 = self.eos_properties['cabbeling_S']
-        nu = self.eos_properties['cabbeling_TS']
-        mu1 = self.eos_properties['thermobaric_T']
-        mu2 = self.eos_properties['thermobaric_S']
-
-        dT = T - T_ref
-        dS = S - S_ref
-
-        if eos == '2eos':
-            # rho = -a (1 +.5 lam1 T +
-            dh_T = - g/rho0 * ((-a0*(1+lambda1*dT) - nu*dS)*(Z_r- Z) - 0.5*a0*mu1*(Z_r**2-Z**2) )
-        elif eos == 'seos':
-            dh_T = - g/rho0 * (-a0*(1+lambda1*dT)*(Z_r- Z) - 0.5*a0*mu1*(Z_r**2-Z**2) )
-        return dh_T
-
-    def dh_S(self, T, S, Z, eos, Z_r=0, T_ref=10, S_ref=35):
-        """
-
         :param T:
         :param S:
         :param eos:
@@ -161,20 +130,82 @@ class Properties:
         rho0 = self.constants['rho0']
 
         a0 = self.eos_properties['thermal_expansion']
-        b0 = self.eos_properties['haline_expansion']
-        lambda1 = self.eos_properties['cabbeling_T']
-        lambda2 = self.eos_properties['cabbeling_S']
+        l1 = self.eos_properties['cabbeling_T']
         nu = self.eos_properties['cabbeling_TS']
         mu1 = self.eos_properties['thermobaric_T']
+
+        dT = T - T_ref
+        dS = S - S_ref
+
+        return - g/rho0 * ((-a0*(1+l1*dT) - nu*dS)*(Z_r- Z) - 0.5*a0*mu1*(Z_r**2-Z**2) )
+
+    def dh_S(self, T, S, Z, Z_r=0, T_ref=10, S_ref=35):
+        """
+        :param T:
+        :param S:
+        :param eos:
+        :return:
+        """
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+
+        b0 = self.eos_properties['haline_expansion']
+        l2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
         mu2 = self.eos_properties['thermobaric_S']
 
         dT = T - T_ref
         dS = S - S_ref
-        if eos == '2eos':
-            dh_S = - g/rho0 * ((b0*(1-lambda2*dS) - nu*dT)*(Z_r- Z) - 0.5*b0*mu2*(Z_r**2-Z**2) )
-        elif eos == 'seos':
-            dh_S = - g/rho0 * b0 * (Z_r - Z)
-        return dh_S
+
+        return - g/rho0 * ((b0*(1-l2*dS) - nu*dT)*(Z_r- Z) - 0.5*b0*mu2*(Z_r**2-Z**2))
+
+    def dh_TZ(self, T, S, Z, T_ref=10, S_ref=35):
+
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+
+        a0 = self.eos_properties['thermal_expansion']
+        l1 = self.eos_properties['cabbeling_T']
+        nu = self.eos_properties['cabbeling_TS']
+        mu1= self.eos_properties['thermobaric_T']
+
+        dT = (T-T_ref)
+        dS = (S-S_ref)
+        
+        return (- g/rho0 * ((a0*(1+l1*dT) + nu*dS) + a0*mu1*Z ))
+
+    def dh_SZ(self, T, S, Z, T_ref=10, S_ref=35):
+
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+
+        b0 = self.eos_properties['haline_expansion']
+        l2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
+        mu2 = self.eos_properties['thermobaric_S']
+
+        dT = (T-T_ref)
+        dS = (S-S_ref)
+        
+        return (- g/rho0 * ((-b0*(1-l2*dS) + nu*dT) + b0*mu2*Z ))
+
+    def dh_TT(self, Z, Z_r=0):
+        
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+        a0 = self.eos_properties['thermal_expansion']
+        l1 = self.eos_properties['cabbeling_T']
+        
+        return - g/rho0 * (-a0*l1*(Z_r- Z))
+    
+    def dh_SS(self, Z, Z_r=0):
+        
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+        b0 = self.eos_properties['haline_expansion']
+        l2 = self.eos_properties['cabbeling_S']
+        
+        return - g/rho0 * (b0*l2*(Z_r- Z))
 
     def center_of_mass(self, rho, boussinesq=False, coords=None, mask=None):
         """
