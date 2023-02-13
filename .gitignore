@@ -32,6 +32,11 @@ var/
 .pytest_cache
 *.out
 *.vscode
+.snakemake/
+todo.txt
+
+# dev files
+test.ipynb
 
 # Sphinx doc
 docs/_build
@@ -40,10 +45,20 @@ docs/_build
 ECOanalysis/data/*
 !ECOanalysis/data/EXP00_test/
 
+data/raw/*
+data/processed/*
+data/preprocessed/*
+!data/preprocessed/EXP00_test/
+
 # Configs
 ECOprocessing/Configs/*
 !ECOprocessing/Configs/base.yml
 !ECOprocessing/Configs/processes*
 !ECOprocessing/Configs/EXP00_test
+
+configs/*
+!configs/base.yml
+!configs/EXP00_test
+
 # commit message
 message.txt

@@ -21,9 +21,8 @@ def cmap_OB():
     import matplotlib
     import numpy as np
     
-    top = matplotlib.cm.get_cmap('OrRd', 128) # r means reversed version
-    bottom = matplotlib.cm.get_cmap('Blues', 128)# combine it all
-    newcolors = np.vstack((top(np.linspace(0, 1, 128)[::-1][10:-20]),
-                       bottom(np.linspace(0, 1, 128))[10:-20]))# create a new colormaps with a name of OrangeBlue
+    bottom = matplotlib.cm.get_cmap('OrRd', 128) # r means reversed version
+    top = matplotlib.cm.get_cmap('Blues', 128)# combine it all
+    newcolors = np.vstack((top(np.linspace(0.15, 0.9, 127)[::-1]),[[1,1,1,1]], #linspace(0,1)[::-1][10:-20]
+                        bottom(np.linspace(0.15, 0.9, 127))))# create a new colormaps with a name of OrangeBlue
     return matplotlib.colors.ListedColormap(newcolors, name='OrangeBlue')
-    

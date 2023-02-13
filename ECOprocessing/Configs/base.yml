@@ -50,6 +50,9 @@ preprocessing:
             - -1
 
     # Variables to pass through to the new dataset
+    pass_metrics: yes
+    pass_masks: yes
+    
     vars_to_pass:      # Key is the variables original name, value the new name
         mldr10_1: mld
         zos     : zos

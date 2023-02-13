@@ -97,11 +97,9 @@ def existing_files_handler(datasets, datapaths, filespath_prefix, **kwargs):
             files_to_remove=[]
             for i in range(len(file_paths)):  
                 if (time_stop[i] > kwargs['time_start'] and time_stop[i] < kwargs['time_stop']):
-                    print('Remove ', file_paths[i])
                     files_to_remove.append(file_paths[i])
                 elif (time_start[i] < kwargs['time_stop'] and time_start[i] >= kwargs['time_start']):
-                    print('Remove ', file_paths[i])
-                    files_to_remove.append(file_paths[i])#os.remove(file_paths[i]) 
+                    files_to_remove.append(file_paths[i])
 
             datapaths_og = datapaths.copy()
             for p in range(len(datapaths)):
@@ -174,6 +172,43 @@ def config_parser(config_path='Configs/', sub_config=None ,log=False):
         print("Postprocess: %s"              % kwargs_proc['postprocessing'])
 
     return kwargs_proc, kwargs_pre, kwargs_sim
+
+def config_preparation(exp='EXP00_test',time_start=0,time_stop=360,n_chunks=4):
+    from pathlib import Path 
+    import yaml, os, shutil
+
+    if not os.path.exists(f'configs/{exp}'):
+        print(f'Initialize Configuration configs/{exp}/')
+        os.mkdir(f'configs/{exp}')
+        shutil.copyfile('configs/base.yml', f'configs/{exp}/base.yml')
+    elif not list(Path(f'configs/{exp}/').glob('base.yml')):
+        shutil.copyfile('configs/base.yml', f'configs/{exp}/base.yml')
+
+    data = dict(
+            preprocessing = dict(
+                prioritize_existing = True
+                ),
+            processing = dict(
+                exp_in = exp,
+                exp_out = exp,
+                n_chunks = n_chunks,
+                time_start  = time_start,
+                time_stop   = time_stop
+                )
+            )
+
+    if list(Path(f'configs/{exp}/').glob(f'subconfig_{exp}.yml')):
+        with open(f'configs/{exp}/subconfig_{exp}.yml') as infile:
+            yaml_data = yaml.safe_load(infile)
+        write = not yaml_data == data
+    else:
+        write = True
+    if write:
+        print('Update subconfiguration')
+        with open(f'configs/{exp}/subconfig_{exp}.yml', 'w') as outfile:
+            yaml.dump(data, outfile, default_flow_style=False)
+    else:
+        print('Subconfiguuation already in place')
 
 def get_namelist(path = None):
     import f90nml

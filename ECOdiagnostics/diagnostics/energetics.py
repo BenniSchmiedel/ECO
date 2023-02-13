@@ -302,7 +302,7 @@ class Energetics_trends:
                 self.trends_pe.append(process)
 
 
-    def kinetic_energy_trend(self, v, rho, **kwargs):
+    def kinetic_energy_trend(self, v, **kwargs): # Deprecated
 
         ke_trends = dict()
         for i in list(kwargs.keys()):
@@ -318,7 +318,7 @@ class Energetics_trends:
                      if ke_trends[i] is None else ke_trends[i] for i in ke_trends}
         return sum(ke_trends.values()), ke_trends
 
-    def potential_energy_trend(self, rho, **kwargs):
+    def potential_energy_trend(self, **kwargs): # Deprecated
 
         processes_keys = ['adv_m', 'adv_z', 'adv_v', 'conv', 'diff_h', 'diff_v', 'bbl',
                           'geoth', 'surf_runoff', 'solar_pen', 'relax']
@@ -339,7 +339,7 @@ class Energetics_trends:
     def internal_energy_trend(self):
         pass
 
-    def center_of_gravity_h_trend(self, rho, v, T, S, Z, eos = None, Z_r=0, T_ref=10, S_ref=35,
+    def center_of_gravity_h_trend(self, v, T, S, Z, eos = None, Z_r=0, T_ref=10, S_ref=35,
                                   T_trend=None, T_trends=None,
                                   S_trend=None, S_trends=None,
                                   C_trend=None, C_trends=None,
@@ -348,21 +348,24 @@ class Energetics_trends:
         ## Get T and S trends
         if T_trend is None and T_trends is None:
             raise Exception('Please provide either the total T_trend or the processes as dictionary named T_trends')
-        elif not T_trends is None:
-            T_trends = self.tracers.temperature_trend(**T_trends)
-            T_trend = T_trends[0]
+        elif T_trend is None:
+            T_trend = sum(T_trends.values())
+        #    T_trends = self.tracers.temperature_trend(**T_trends)
+        #    T_trend = T_trends[0]
 
         if S_trend is None and S_trends is None:
             raise Exception('Please provide either the total S_trend or the processes as dictionary named S_trends')
-        elif not S_trends is None:
-            S_trends = self.tracers.salinity_trend(**S_trends)
-            S_trend = S_trends[0]
+        elif S_trend is None:
+            S_trend = sum(S_trends.values())
+        #elif not S_trends is None:
+        #    S_trends = self.tracers.salinity_trend(**S_trends)
+        #    S_trend = S_trends[0]
 
         if not eos:
             eos = self.eos
         ## Get derivatives of h in T and S
-        dh_T = self.properties.dh_T(T, S, Z, eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
-        dh_S = self.properties.dh_S(T, S, Z, eos, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
+        dh_T = self.properties.dh_T(T, S, Z, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
+        dh_S = self.properties.dh_S(T, S, Z, Z_r=Z_r, T_ref=T_ref, S_ref=S_ref)
 
         g=self.properties.constants['g']
         rho0=self.properties.constants['rho0']
@@ -370,10 +373,12 @@ class Energetics_trends:
         ## Get Conversion
         if C_trend is None and C_trends is None:
             raise Exception('Please provide either the total C_trend or the processes as dictionary named C_trends')
-        elif not C_trends is None:
-            C_trends = self.kinetic_energy_trend(v, rho, **C_trends)
-            if C_trend is None:
-                C_trend = C_trends[0]
+        elif C_trend is None:
+            C_trend = sum(C_trends.values())
+        #elif not C_trends is None:
+        #    C_trends = self.kinetic_energy_trend(v, **C_trends)
+        #    if C_trend is None:
+        #        C_trend = C_trends[0]
 
         zg_trend = 1/g * (self.properties.global_mean(dh_T*T_trend, Vmask=Vmask, **kwargs) +
                           self.properties.global_mean(dh_S*S_trend, Vmask=Vmask, **kwargs) +
@@ -381,17 +386,17 @@ class Energetics_trends:
 
         zg_trends = []
         if not T_trends is None:
-            zg_trends.append({i: T_trends[1][i] * dh_T / g for i in T_trends[1]})
+            zg_trends.append({i: T_trends[i] * dh_T / g for i in T_trends})
         else:
             zg_trends.append({'T_tot':dh_T * T_trend / g})
 
         if not S_trends is None:
-            zg_trends.append({i: S_trends[1][i] * dh_S / g for i in S_trends[1]})
+            zg_trends.append({i: S_trends[i] * dh_S / g for i in S_trends})
         else:
             zg_trends.append({'S_tot':dh_S * S_trend / g})
 
         if not C_trends is None:
-            zg_trends.append({i:  C_trends[1][i] / g / rho0 for i in C_trends[1]})
+            zg_trends.append({i:  C_trends[i] / g / rho0 for i in C_trends})
         else:
             zg_trends.append({'convp2k': C_trend / g / rho0})
 

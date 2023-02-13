@@ -1,0 +1,100 @@
+processing:
+    # Path setup
+    exp_in         : EXP00_d
+    exp_out        : EXP00_test
+    nemo_path      : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    domain_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    output_path    : ../ECOanalysis/data/              
+    data_override  : yes
+
+    # dask setup
+    n_cores         : 8 
+    n_processes     : 8 
+    n_workers       : 1  
+    n_chunks        : 4     # Determines chunksize and number of output files
+    n_jobs          : 1
+    memory          : 50GB
+    account         : snic2022-22-376
+    max_chunksize   : 2GiB  # Provide as string, either as GiB or MiB
+    local_directory : /scratch/local
+
+    # Processing setup
+    time_start      : 0
+    time_stop       : 3600
+    spinup          : no   # overwrite key to process zg and moc only
+    dynamics        : yes
+    kinetic_energy  : no
+    wind_input      : yes
+    postprocessing  : no
+
+    #xgcm setup
+    xgcm:
+        boundary: fill
+        fill_value: 0
+
+preprocessing:
+    # Renaming through xnemogcm
+    prioritize_existing  : yes
+    allow_rechunk        : yes               # When yes force renaming  
+    export_to            : "output_path"     # Options are "output_path" and "nemo_path"
+    
+    # Masking, by index
+    boundary_mask: 
+        Z: 
+            - -1
+        Y: 
+            - 0
+            - -1
+        X: 
+            - 0
+            - -1
+
+    # Variables to pass through to the new dataset
+    pass_metrics: yes
+    pass_masks: yes
+    
+    vars_to_pass:      # Key is the variables original name, value the new name
+        mldr10_1: mld
+        zos     : zos
+        so      : so
+        thetao  : to
+        woce    : wo
+        woce_eiv: wo_e
+        avt_evd : k_evd
+
+simulation:
+    # Namelist
+    get_namelist: yes
+    
+    # simulation equation of state
+    eos:
+        thermal_expansion   : 0.1655
+        haline_expansion    : 0.76554
+        cabbeling_T         : 5.952e-2
+        cabbeling_S         : 7.4914e-4
+        cabbeling_TS        : 2.4341e-3
+        thermobaric_T       : -1.497e-4
+        thermobaric_S       : -1.109e-5
+
+    # trends (that are available and should be processed)
+    T_trends :
+        - ldf
+        - zdf
+        - qns
+        - qsr
+        - atf
+
+    S_trends :
+        - ldf
+        - zdf
+        - cdt
+        - atf
+
+    K_trends : 
+        - convP2K
+        - tau
+    
+    P_trends : 
+
+
+
