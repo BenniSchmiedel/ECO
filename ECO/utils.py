@@ -1,4 +1,3 @@
-
 def get_number_of_chunks(ds, **kwargs) -> int: 
     # Function to evaluate the chunksize based on default number of chunks and maximum size
     n_chunks = kwargs['n_chunks']
@@ -16,9 +15,11 @@ def get_number_of_chunks(ds, **kwargs) -> int:
         print('Adjust number of chunks to %i'%(n_chunks))
     return n_chunks
 
-def split_by_chunks(dataset, path_prefix='.', **kwargs):
+def split_by_chunks(dataset, path_prefix='.', sub_prefix='', **kwargs):
     import itertools
-
+    from pathlib import PosixPath
+    export_path = PosixPath(path_prefix) / PosixPath(sub_prefix).parent #= os.path.split(filespath_prefix)[0]
+    file_prefix = PosixPath(sub_prefix).name
     chunk_slices = {}
     for dim, chunks in dataset.chunks.items():
         slices = []
@@ -35,29 +36,32 @@ def split_by_chunks(dataset, path_prefix='.', **kwargs):
         selection = dict(zip(chunk_slices.keys(), slices))
         ds_chunks.append(dataset[selection])
 
-    chunk_paths = ['%s_%i_%i.nc'%(path_prefix, chunk_slices['t'][i].start+kwargs['time_start'],
+    chunk_paths = ['%s/%s_%i_%i.nc'%(str(export_path),file_prefix, chunk_slices['t'][i].start+kwargs['time_start'],
                                                 chunk_slices['t'][i].stop+kwargs['time_start']) for i in range(len(chunk_slices['t']))]
     return [ds_chunks, chunk_slices['t'], chunk_paths]
 
-def existing_files_handler(datasets, datapaths, filespath_prefix, **kwargs):
+def existing_files_handler(datasets, datapaths, path_prefix='.', sub_prefix='',  **kwargs):
     import os
-    import glob
     import xarray as xr
+    from pathlib import PosixPath
 
+    datapaths_out = [p for p in datapaths]
     def save():
-        print('Write data to: %s'%(filespath_prefix))
-        xr.save_mfdataset(datasets=datasets, paths=datapaths)
+        print('Write data to: %s'%(PosixPath(path_prefix) / PosixPath(sub_prefix)))
+        xr.save_mfdataset(datasets=datasets, paths=datapaths_out)
         
-    export_path = os.path.split(filespath_prefix)[0]
+    export_path = PosixPath(path_prefix) / PosixPath(sub_prefix).parent #= os.path.split(filespath_prefix)[0]
+    file_prefix = PosixPath(sub_prefix).name
     # Create directory if not existing
-    if not os.path.exists(export_path):
+    #if not os.path.exists(export_path):
+    if not export_path.exists():
         print('Create output folder')
-        os.mkdir(export_path)
+        export_path.mkdir()
         save()
         return
     
     # Check if files do not exist -> skip
-    if not glob.glob(filespath_prefix+'*'):
+    if not list(export_path.glob(file_prefix+'*')):
         print('No files exist yet, proceed')
         save()
         return
@@ -65,8 +69,9 @@ def existing_files_handler(datasets, datapaths, filespath_prefix, **kwargs):
         time_stop  = []
         time_start  = []
         file_paths = []
-        for f in glob.glob(filespath_prefix+'*'): 
-            file_name_parts = os.path.split(f[:-3])[1].split('_')
+        for f in list(export_path.glob(file_prefix+'*')): 
+            file_name_parts = f.name[:-3].split('_')
+            if file_name_parts[-1]=='temp': continue
             time_stop.append(int(file_name_parts[-1]))
             time_start.append(int(file_name_parts[-2]))
             file_paths.append(f)
@@ -101,17 +106,13 @@ def existing_files_handler(datasets, datapaths, filespath_prefix, **kwargs):
                 elif (time_start[i] < kwargs['time_stop'] and time_start[i] >= kwargs['time_start']):
                     files_to_remove.append(file_paths[i])
 
-            datapaths_og = datapaths.copy()
-            for p in range(len(datapaths)):
-                datapaths[p] = datapaths[p][:-3]+'_temp.nc'
-                print('Temporary save to %s'%(datapaths[p]))
+            datapaths_out = [p[:-3]+'_tmp.nc' for p in datapaths]
             save()
-            for f in files_to_remove:
-                print('Remove ', f)
-                os.remove(f)
             for p in range(len(datapaths)):
-                print('Rename to %s'%(datapaths_og[p]))
-                os.rename(datapaths[p],datapaths_og[p])
+                print('Remove & rename', files_to_remove[p])
+                os.remove(files_to_remove[p])
+            for p in range(len(datapaths)):
+                os.rename(datapaths_out[p],datapaths[p])
              
 def drop_from_dict(d, k):
     d_out = d.copy()
