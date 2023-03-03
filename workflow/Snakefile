@@ -1,15 +1,26 @@
 
 from pathlib import Path 
-import sys, os
+import sys, os, yaml
 sys.path.insert(1, os.path.abspath('../') )
 
 DATA_PROCESSED = Path('data/processed')
 DATA_PREPROCESSED = Path('data/preprocessed')
-DATA_RAW = Path('data/raw') #'/proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/'
-
+DATA_RAW = Path('data/raw')
 time_start = 0
-time_stop   = 30
-n_chunks = 4
+time_stop   = 3600
+n_chunks = 10
+
+def get_DATA_RAW(wildcards):
+    DATA_RAW = Path('data/raw')
+    files_in_raw = [i.name for i in list((DATA_RAW / 'EXP00_test' ).glob('*'))]
+
+    with open(f'configs/{wildcards.exp_family}/base.yml', "r") as ymlfile:
+        cfg = yaml.safe_load(ymlfile)
+    DATA_RAW = Path(cfg['processing']['nemo_path'])
+
+    return expand(
+        DATA_RAW / '{{exp_family}}{{exp_suffix}}' / '{files}',
+        files = files_in_raw)
 
 if abs(time_start-time_stop)%n_chunks==0:
     n_steps = int(abs(time_start-time_stop)/n_chunks)
@@ -17,19 +28,19 @@ else:
     n_steps = int(abs(time_start-time_stop)/n_chunks)+1
 timestep_chunks = [f'{i*n_steps}_{(i+1)*n_steps}' if (i+1)*n_steps<time_stop else f'{i*n_steps}_{time_stop}' for i in range(n_chunks)]
 
-files_in_raw = [i.name for i in list((DATA_RAW / 'EXP00_test' ).glob('*grid*.nc'))]
-#ALL_EXPS = [i.name for i in list(Path('data/raw/').glob('*'))]
 
+
+#ALL_EXPS = [i.name for i in list(Path('data/raw/').glob('*'))]
 #variables = 
 
 rule create_figure_spinup:
     input: 
         expand(
-            DATA_PROCESSED / '{{exp}}' / '{{exp}}_{ts_te}.nc',
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}_{ts_te}.nc',
             ts_te = timestep_chunks
     )
     output:
-        'figures/{exp}/spinup.pdf'
+        'figures/{exp_family}/spinup.pdf'
     shell:
         'touch {output}'
 
@@ -38,40 +49,53 @@ rule create_config:
     input:
         'configs/base.yml'
     output:
-        'configs/{exp}/base.yml',
-        'configs/{exp}/subconfig_{exp}.yml'
+        #'configs/{exp_family}/base.yml',
+        'configs/{exp_family}/subconfig{exp_suffix}.yml'
     run:
         from ECO.utils import config_preparation
-        config_preparation(exp=wildcards.exp,time_start=time_start,time_stop=time_stop,n_chunks=n_chunks)
+        config_preparation(exp=wildcards.exp_family,suffix=wildcards.exp_suffix,time_start=time_start,time_stop=time_stop,n_chunks=n_chunks)
 
 rule preprocess:
     input: 
-        expand(
-        DATA_RAW / '{{exp}}' / '{files}',
-        files = files_in_raw
-        ),
-        'configs/{exp}/base.yml',
-        'configs/{exp}/subconfig_{exp}.yml'
+        get_DATA_RAW,
+        'configs/{exp_family}/base.yml',
+        'configs/{exp_family}/subconfig{exp_suffix}.yml'
     output:
         expand(
-            DATA_PREPROCESSED / '{{exp}}' / '{{exp}}_{ts_te}.nc',
+            DATA_PREPROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / '{{exp_family}}{{exp_suffix}}_{ts_te}.nc',
             ts_te = timestep_chunks
         )
     shell:
-        'python ECO/processing/ECO_processing.py -p configs/{wildcards.exp} -c subconfig_{wildcards.exp} -m preprocess'
+        'python ECO/processing/ECO_processing.py -f {wildcards.exp_family} -e {wildcards.exp_suffix} -m preprocess'
 
 rule process:
     input: 
         expand(
-        DATA_PREPROCESSED / '{{exp}}' / '{{exp}}_{ts_te}.nc',
+        DATA_PREPROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / '{{exp_family}}{{exp_suffix}}_{ts_te}.nc',
         ts_te = timestep_chunks
         ),
-        'configs/{exp}/base.yml',
-        'configs/{exp}/subconfig_{exp}.yml'
+        'configs/{exp_family}/base.yml',
+        'configs/{exp_family}/subconfig{exp_suffix}.yml'
     output:
         expand(
-            DATA_PROCESSED / '{{exp}}' / '{{exp}}_{ts_te}.nc',
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / 'domain' / 'masks_{ts_te}.nc',
+            ts_te = timestep_chunks
+        ),
+        expand(
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / 'domain' / 'metrics_{ts_te}.nc',
+            ts_te = timestep_chunks
+        ),
+        expand(
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / 'properties' / 'moc_{ts_te}.nc',
+            ts_te = timestep_chunks
+        ),
+        expand(
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / 'properties' / 'properties_{ts_te}.nc',
+            ts_te = timestep_chunks
+        ),
+        expand(
+            DATA_PROCESSED / '{{exp_family}}' / '{{exp_family}}{{exp_suffix}}' / 'properties' / 'trends_{ts_te}.nc',
             ts_te = timestep_chunks
         )
     shell:
-        'python ECO/processing/ECO_processing.py -p configs/{wildcards.exp} -c subconfig_{wildcards.exp}'
+        'python ECO/processing/ECO_processing.py -f {wildcards.exp_family} -e {wildcards.exp_suffix} -m process'

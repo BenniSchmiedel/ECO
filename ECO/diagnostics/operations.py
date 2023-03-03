@@ -195,11 +195,11 @@ class Grid_ops:
             metric=None
             for i in metric_out_order:
                 if metric is None:
-                    try: metric = metric_out[i]
-                    except: metric = metric_out[i[0]]
+                    try: metric = metric_out[i].copy()
+                    except: metric = metric_out[i[0]].copy()
                 else:
-                    try: metric *= metric_out[i]
-                    except: metric *= metric_out[i[0]]
+                    try: metric *= metric_out[i].copy()
+                    except: metric *= metric_out[i[0]].copy()
             
             name = '_'.join(['{}']*len(metric_out)).format(*tuple(m.name for m in metric_out))
             metric_out = [metric.rename(name)]  
@@ -1031,6 +1031,7 @@ class Grid_ops:
         dims = self.grid._get_dims_from_axis(P, axes)
         if P.dims != self._get_dims_order(P):
             P = P.transpose(*self._get_dims_order(P))
+
         if boundary is None:
             m = self._get_metric_by_pos(axes, pos ,combine=True, case=case)[0]
         else:
@@ -1050,7 +1051,8 @@ class Grid_ops:
             m = m * Vmask
 
         # Average along specified axes
-        P_av = (P * m).sum(dims) / (m.sum(dims)+1e-16)
+        V = m.sum(dims)
+        P_av = (P * m).sum(dims) / V
         if np.isnan(P).any() and keepna:
             P_av = P_av.where(P_av!=0)
         return P_av

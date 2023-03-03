@@ -61,6 +61,8 @@ preprocessing:
         woce    : wo
         woce_eiv: wo_e
         avt_evd : k_evd
+        ttrd    : ttrd*
+        strd    : strd*
 
 simulation:
     # Namelist

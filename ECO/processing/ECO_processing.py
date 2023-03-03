@@ -2,16 +2,13 @@ import os
 import sys
 import debugpy
 from datetime import datetime
-from pathlib import Path 
 
-DATA_PROCESSED = Path('data/processed')
-DATA_PREPROCESSED = Path('data/preprocessed')
 script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
 sys.path.insert(0, parent_dir)
 
 import diagnostics
-from utils import drop_from_dict, split_by_chunks, str_or_none, get_number_of_chunks, existing_files_handler, config_parser
+from utils import drop_from_dict, str_or_none, get_number_of_chunks, config_parser, save_by_chunks, get_namelist
 from xnemogcm import open_nemo_and_domain_cfg, get_metrics
 
 import numpy as np
@@ -19,26 +16,24 @@ import xgcm
 import xarray as xr
 #import warnings
 #warnings.filterwarnings('ignore')
-
+                            
 def preprocess():
     import glob 
-    global kwargs_proc
-
-    # Get export path/files
-    kwargs_proc['path_pre']= str(DATA_PREPROCESSED / kwargs_proc['exp_out'])
-    kwargs_proc['path_proc']= str(DATA_PROCESSED / kwargs_proc['exp_out'])
-    kwargs_proc['files_pre']='%s/%s/%s'%(DATA_PREPROCESSED,kwargs_proc['exp_out'],kwargs_proc['exp_out'])
-    kwargs_proc['files_proc']='%s/%s/%s'%(DATA_PROCESSED,kwargs_proc['exp_out'],kwargs_proc['exp_out'])
+    from pathlib import PosixPath
 
     # Either load preprocessed data or original data
     if kwargs_pre['prioritize_existing']:
         # Check files exist
-        if glob.glob(kwargs_proc['files_pre']+'*'):
+        export_path = PosixPath(kwargs_proc['path_pre'])# / PosixPath(kwargs_proc['exp_out']).parent
+        file_prefix = PosixPath(kwargs_proc['exp_out']+kwargs_proc['exp_out_suffix']).name
+
+        if list(export_path.glob(file_prefix+'*')):#glob.glob(kwargs_proc['files_pre']+'*'):
             time_stop  = []
             time_start  = []
             # Get timestamps of files
-            for f in glob.glob(kwargs_proc['files_pre']+'*'): 
+            for f in list(export_path.glob(file_prefix+'*')): #for f in glob.glob(kwargs_proc['files_pre']+'*'): 
                 filename_parts = os.path.split(f[:-3])[1].split('_')
+                if filename_parts[-1]=='tmp': continue
                 time_stop.append(int(filename_parts[-1]))
                 time_start.append(int(filename_parts[-2]))
             # If timestamps are insufficient, continue with original, otherwise skip
@@ -51,19 +46,20 @@ def preprocess():
                     print('Skip renaming and chunking')
                     return 
             else:
-                print('Existing data does not have the sufficient time steps, start with renaming\nLoad original Datasets')
+                print('Existing data does not have the sufficient time steps, start with renaming')
                 get_original = True
         else:
-            print('No preprocessed data found, start with renaming\nLoad original Datasets')
+            print('No preprocessed data found, start with renaming')
             get_original = True
     else:
+        print('Ignore preexisting data')
         get_original = True
 
     if get_original:
-        print('Load original data')
+        print('Load original Datasets')
         ds = open_nemo_and_domain_cfg(
-            nemo_files=kwargs_proc['nemo_path']+kwargs_proc['exp_in'],
-            domcfg_files=kwargs_proc['domain_path']+kwargs_proc['exp_in'],
+            nemo_files=kwargs_proc['path_nemo'],
+            domcfg_files=kwargs_proc['path_domain'],
             nemo_kwargs={'decode_times':False, 'drop_variables': ['time_instant'], 'parallel':True}
         )
         ds = ds.chunk(ds.dims)
@@ -75,18 +71,8 @@ def preprocess():
     print('Create %i timechunks of size %s nbytes'%(kwargs_proc['n_chunks'], ds.nbytes/kwargs_proc['n_chunks']) )
 
     ds = ds.chunk({'t':int(round((kwargs_proc['time_stop']-kwargs_proc['time_start'])/kwargs_proc['n_chunks'],0))})#.load()
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds, 
-                                                                                         path_prefix=kwargs_proc['path_pre'],
-                                                                                         sub_prefix=kwargs_proc['exp_out'], 
-                                                                                         **kwargs_proc)
-    
-    
     # Save preprocessed data by chunks
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'],
-                           path_prefix=kwargs_proc['path_pre'],
-                           sub_prefix=kwargs_proc['exp_out'], **kwargs_proc)
-    #xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'])
+    save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
     print('Preprocess finished')
 
 def prepare_dataset(): 
@@ -94,18 +80,11 @@ def prepare_dataset():
     ds = ds.isel(t=slice(kwargs_proc['time_start'],kwargs_proc['time_stop']))
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
     
-    print( 'Prepare key variable for processing' ) 
-        
-    bd_conf=kwargs_pre['boundary_mask']
-    horiz_bd_conf = drop_from_dict(bd_conf, 'Z')
-
-    grid = xgcm.Grid(ds, metrics=get_metrics(ds), periodic=False)
-    grid_ops = diagnostics.Grid_ops(grid, boundary=kwargs_proc['xgcm'])
-
     print("Pass selected variables through")
     for var in kwargs_pre['vars_to_pass']:
         if var in ds.variables:
             ds_proc[kwargs_pre['vars_to_pass'][var]]=ds[var]
+
 
     print( 'Add halftime data' )
     t_s = xr.DataArray((ds.t-ds.t.diff('t').mean('t')/2).values,
@@ -115,32 +94,26 @@ def prepare_dataset():
         ds[data.name+'_s'] = ds_proc[data.name+'_s'] = xr.DataArray(data.interp({'t':t_s}).values,
                            coords=data.coords)
     ds_proc=ds_proc.rename({'thetao_s':'to_s'})
-
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='properties/properties', **kwargs_proc)
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'], 
-                           path_prefix=kwargs_proc['path_proc'], 
-                           sub_prefix='properties/properties', **kwargs_proc)
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/properties', **kwargs_proc)
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
+
 
     print( 'Add trends' )
-    for var in kwargs_pre['vars_to_pass']:
+    for key in kwargs_pre['vars_to_pass']:
+        var = kwargs_pre['vars_to_pass'][key]
         if '*' in var:
             for var1 in ds.variables:
-                if var in var1:
+                if var.replace('*','') in var1:
                     ds_proc[var1]=ds[var1]
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='properties/trends', **kwargs_proc)
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'], 
-                           path_prefix=kwargs_proc['path_proc'], 
-                           sub_prefix='properties/trends', **kwargs_proc)
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/trends', **kwargs_proc)
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
 
+
     print( 'Add masks' )
+    grid = xgcm.Grid(ds, metrics=get_metrics(ds), periodic=False)
+    grid_ops = diagnostics.Grid_ops(grid, boundary=kwargs_proc['xgcm'])
+    bd_conf=kwargs_pre['boundary_mask']
+    horiz_bd_conf = drop_from_dict(bd_conf, 'Z')
     ds['maskh_bdeq_t'] = grid_ops.boundary_mask(ds.e2t, horiz_bd_conf)*grid_ops.eq_mask(ds.e2t)
     ds['maskh_bdeq_u'] = grid_ops.boundary_mask(ds.e2u, horiz_bd_conf)*grid_ops.eq_mask(ds.e2u)
     ds['maskh_bdeq_v'] = grid_ops.boundary_mask(ds.e2v, horiz_bd_conf)*grid_ops.eq_mask(ds.e2v)
@@ -152,18 +125,9 @@ def prepare_dataset():
     #if kwargs_pre['pass_masks']:
     for var in ds.variables:
         if 'mask' in var: ds_proc[var] = ds[var]
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='domain/masks', **kwargs_proc)
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'], 
-                           path_prefix=kwargs_proc['path_proc'], 
-                           sub_prefix='domain/masks', **kwargs_proc)
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='domain/masks', **kwargs_proc)
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
 
-    #ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, path_prefix=kwargs_proc['files_proc'], **kwargs_proc)
-    #xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
-    #ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
     print( 'Add metrics' )
     ds['e1tm'] = ds_proc['e1tm']= ds.e1t*grid_ops.boundary_mask(ds.e1t, horiz_bd_conf)
     ds['e1um'] = ds_proc['e1um'] = ds.e1u*grid_ops.boundary_mask(ds.e1u, horiz_bd_conf)
@@ -178,32 +142,12 @@ def prepare_dataset():
     ds['e3vm'] = ds_proc['e3vm'] = ds.e3v*ds.mask_bd_v
     ds['e3wm'] = ds_proc['e3wm'] = ds.e3w*ds.mask_bd_w
     ds['e3tm_1d']= ds_proc['e3tm_1d'] = grid_ops.average(ds.e3tm,['Y','X'])
-
     ds['depth'] = ds_proc['depth'] = - (ds.gdepw_0.values+ds.e3tm/2)
     ds['depth_1d'] = ds_proc['depth_1d'] = ds.depth.mean(['t','x_c','y_c'])
     ds['depth_s'] = ds_proc['depth_s'] = xr.DataArray(ds['depth'].interp({'t':t_s}).values,coords=ds['depth'].coords)
-    
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='domain/metrics', **kwargs_proc)
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'], 
-                           path_prefix=kwargs_proc['path_proc'], 
-                           sub_prefix='domain/metrics', **kwargs_proc)
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='domain/metrics', **kwargs_proc)
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
-    #if kwargs_pre['pass_metrics']:
-    #    for var in ds.variables:
-    #        if var[:2] in ['e1','e2','e3'] and var[-2:] not in ['1d','_0']: ds_proc[var] = ds[var]
-    #    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, path_prefix=kwargs_proc['files_proc'], **kwargs_proc)
-    #    xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
-    #    ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
-    
-    # ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, path_prefix=kwargs_proc['files_proc'], **kwargs_proc)
-    # xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
-    # ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
 
-    #print('Write data to: %s'%(kwargs_proc['files_proc']))
-    #xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'])
     return ds
 
 def process():
@@ -219,8 +163,6 @@ def process():
     bd = {'boundary': 'fill', 'fill_value': 0}
     grid = xgcm.Grid(ds, metrics=_metrics, periodic=False)
     grid_ops = diagnostics.Grid_ops(grid, boundary=bd, maskargs={'mask':'nan'})
-
-    #ds['e3tm_1d']=grid_ops.average(ds.e3tm,['Y','X'])
     grid = grid_ops._update({'Z':ds['e3tm_1d']})
     
     properties=diagnostics.Properties(grid_ops,{'X': ds.glamt,
@@ -229,37 +171,20 @@ def process():
     power = diagnostics.Power(grid_ops)
     energetics=diagnostics.Energetics(grid_ops, properties)
     trends = {key: kwargs_sim[key] for key in ['T_trends','S_trends','K_trends','P_trends']}
-    energetics_trend=diagnostics.Energetics_trends(grid_ops, properties,trends)
-    #if kwargs_proc['spinup']:
-    #    trends = {key: kwargs_sim[key] for key in ['T_trends','S_trends','K_trends','P_trends']}
-    #    energetics_trend=diagnostics.Energetics_trends(grid_ops, properties,trends)
-    #else:
-    #    energetics_trend=diagnostics.Energetics_trends(grid_ops, properties,{'Configs/processes.ini'})
+    energetics_trend=diagnostics.Energetics_trends(grid_ops, properties, trends)
     transport = diagnostics.Transport(grid_ops)
 
     maskargs= {'mask':'usr_def','mask_values':ds.mask_bd_t}
 
-    print( 'Add constants' )
-
-    L = 61                        # [degrees] Approximative meridional extend of the basin
-    atau         =   0.8          # [no unit]
-    deltatau     =   5.77         # [degrees]
-    tau0   =  0.1  #[0.1, 0.1333, 0.1666, .2]  
-
-    ####
     print( 'Process, zg for total/global/horizontal mean' )
-    
     ds_proc['t_hm'] = properties.horizontal_mean(ds['thetao'],**maskargs)
     ds_proc['s_hm'] = properties.horizontal_mean(ds['so'],**maskargs)
 
     ds_proc['rho_s'] = properties.density(ds['thetao_s'],ds['so_s'],ds['depth'],**maskargs)
     ds_proc['rho_hm'] = properties.density(ds_proc['t_hm'], ds_proc['s_hm'], ds['depth'])
 
-    print('Write properties to: %s'%(kwargs_proc['files_proc'])) 
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='properties/properties', **kwargs_proc)
-    xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
+    print('Write properties to: %s'%(kwargs_proc['path_proc'])) 
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/properties', mode='a', **kwargs_proc)
     ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
 
     eta_mean=properties.horizontal_mean(ds.zos)
@@ -270,7 +195,7 @@ def process():
     ds_proc['t_gm'] = properties.global_mean(ds['thetao'],**maskargs)
     ds_proc['s_gm'] = properties.global_mean(ds['so'],**maskargs)
     ds_proc['rho'] = properties.density(ds['thetao'],ds['so'],ds['depth'],**maskargs)
-    ds_proc['rho_gm'] = properties.density(ds_proc['t_gm'], ds_proc['s_gm'], ds['depth'])
+    ds_proc['rho_gm'] = properties.density(ds_proc['t_gm'], ds_proc['s_gm'], ds['depth_1d'])
 
     ds_proc['zg_eta']= energetics.center_of_gravity_eta(ds.zos,ds_proc.rho,eta_r=eta_mean, boussinesq=True)
     ds_proc['zg_0'] = energetics.center_of_gravity_classical(ds_proc.rho_gm).mean('t')    
@@ -344,7 +269,11 @@ def process():
 
         if kwargs_proc['wind_input']:
             print( 'Diagnose wind power input' )
-            
+
+            L = 61                        # [degrees] Approximative meridional extend of the basin
+            atau         =   0.8          # [no unit]
+            deltatau     =   5.77         # [degrees]
+            tau0   =  0.1  #[0.1, 0.1333, 0.1666, .2]  
             utau_t=tau0 * (- np.cos( ( 3*np.pi*ds.gphit)/( 2 * L ))+ atau * np.exp(-ds.gphit**2 / deltatau**2 ) )
 
             Ptaug = power.P_taug(utau_t, utau_t*0, ds.zos, ds.ff_t).transpose(*('t','y_c','x_c'))
@@ -382,16 +311,11 @@ def process():
         del S_trends
         del KE_trends
 
-        print('Write tendencies to: %s'%(kwargs_proc['files_proc'])) 
-        ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc,
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='properties/properties', **kwargs_proc)
-        #ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, path_prefix=kwargs_proc['files_proc'], **kwargs_proc)
-        xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
+        print('Write tendencies to: %s'%(kwargs_proc['path_proc'])) 
+        save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/properties', mode='a', **kwargs_proc) 
         ds_proc = xr.Dataset(coords = ds.coords, attrs = ds.attrs)
 
     print('Diagnose Meridional Overturning Streamfunction')
-    
     psi = transport.compute_moc(ds.vo)
     psi = psi.chunk({d: ds.chunks[d] for d in psi.dims})  # To fix an error in y-chunks 
     ds_proc['psi'] = psi
@@ -399,15 +323,8 @@ def process():
     ds_proc['psi_dmoc'] = ds_proc['psi_maxz'].isel(y_f=slice(9,None)).max('y_f')
     ds_proc['psi_tmoc'] = ds_proc['psi_maxz'].isel(y_f=slice(None,9)).max('y_f')
     
-    print('Write MOC to: %s'%(kwargs_proc['files_proc'])) 
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, 
-                                                                                         path_prefix=kwargs_proc['path_proc'], 
-                                                                                         sub_prefix='properties/moc', **kwargs_proc)
-    existing_files_handler(ds_chunks, 
-                           kwargs_proc['chunk_paths'], 
-                           path_prefix=kwargs_proc['path_proc'], 
-                           sub_prefix='properties/moc', **kwargs_proc)
-    #xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'], mode='a')   
+    print('Write MOC to: %s'%(kwargs_proc['path_proc'])) 
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/moc', **kwargs_proc) 
 
 def postprocess():
     print('Run postprocessing')
@@ -461,11 +378,7 @@ def postprocess():
         ds_proc[p+'_ml'] = post_procml[p]
         ds_proc[p+'_bl'] = post_procbl[p] 
         
-    ds_chunks, kwargs_proc['chunk_slices'], kwargs_proc['chunk_paths'] = split_by_chunks(ds_proc, path_prefix=kwargs_proc['files_proc'], **kwargs_proc)
-
-    print('Write data to: %s'%(kwargs_proc['files_proc'])) 
-    
-    xr.save_mfdataset(datasets=ds_chunks, paths=kwargs_proc['chunk_paths'],mode='a')     
+    save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='postprocessed/postprocessed', **kwargs_proc) 
                           
 if __name__ == '__main__':
     import argparse
@@ -475,15 +388,18 @@ if __name__ == '__main__':
     
     # Parse arguments from script execution
     parser = argparse.ArgumentParser(description='ECO Processing script.')
-    parser.add_argument('-sub_config','-c','--c', type=str_or_none, default=None)
-    parser.add_argument('-config_path','-p','--p', default='')
+    parser.add_argument('-exp_family','-f','--f', type=str_or_none, default=None)
+    parser.add_argument('-exp_name','-e','--e', type=str_or_none, default=None)
+    #parser.add_argument('-sub_config','-c','--c', type=str_or_none, default=None)
+    #parser.add_argument('-config_path','-p','--p', default='')
     parser.add_argument('-d','--d', type=bool, default=False)
     parser.add_argument('-mode','-m','--m', type=str_or_none, default=None)
     args = parser.parse_args()
-    sub_config, config_path, debug_mode, mode = args.c, args.p, args.d, args.m
+    exp_family, exp_name, debug_mode, mode = args.f, args.e, args.d, args.m
 
     # Load configs
-    kwargs_proc, kwargs_pre, kwargs_sim = config_parser(config_path=config_path, sub_config=sub_config, log=True)
+    kwargs_proc, kwargs_pre, kwargs_sim = config_parser(exp_family, exp_suffix=exp_name, log=True)
+    if kwargs_sim['get_namelist']: kwargs_sim['namelist'] = get_namelist(path = kwargs_proc['path_nemo'])
 
     # Initialize debug-mode
     if debug_mode:
@@ -511,6 +427,10 @@ if __name__ == '__main__':
     startTime = datetime.now()
     if mode=='preprocess':
         preprocess()
+    elif mode=='process':
+        ds = prepare_dataset()
+        process()
+        if kwargs_proc['postprocessing']: postprocess()
     else:
         preprocess()
         ds = prepare_dataset()
