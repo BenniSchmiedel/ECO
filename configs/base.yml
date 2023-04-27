@@ -1,10 +1,11 @@
 processing:
     # Path setup
-    exp_in         : EXP00_d
-    exp_out        : EXP00_test
+    exp_in         : EXP00
+    exp_out        : EXP00
+    exp_out_suffix : _test
     nemo_path      : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
     domain_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
-    output_path    : ../ECOanalysis/data/              
+    output_path    : data/processed/       
     data_override  : yes
 
     # dask setup
@@ -21,7 +22,7 @@ processing:
     # Processing setup
     time_start      : 0
     time_stop       : 3600
-    spinup          : no   # overwrite key to process zg and moc only
+    # Depcrecated, handled in config_preparation  -- spinup          : no   # overwrite key to process zg and moc only
     dynamics        : yes
     kinetic_energy  : no
     wind_input      : yes

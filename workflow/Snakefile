@@ -7,7 +7,7 @@ DATA_PROCESSED = Path('data/processed')
 DATA_PREPROCESSED = Path('data/preprocessed')
 DATA_RAW = Path('data/raw')
 time_start = 0
-time_stop   = 3600
+time_stop   = 4100
 n_chunks = 10
 
 def get_DATA_RAW(wildcards):
@@ -21,6 +21,19 @@ def get_DATA_RAW(wildcards):
     return expand(
         DATA_RAW / '{{exp_family}}{{exp_suffix}}' / '{files}',
         files = files_in_raw)
+
+def get_DATA_COMBINE(wildcards):
+    
+    with open(f'configs/{wildcards.exp_family}/base.yml', "r") as ymlfile:
+        cfg = yaml.safe_load(ymlfile)
+    DATA_COMBINE = Path(cfg['processing']['nemo_path'])/ f'{wildcards.exp_family}{wildcards.exp_suffix}' / 'Data'
+  
+    files_spinup = [i.name for i in list((DATA_COMBINE).glob('*'))]
+    return expand(
+        DATA_COMBINE / '{files}',
+        files = files_spinup)
+
+#def get_DATA_OUT
 
 if abs(time_start-time_stop)%n_chunks==0:
     n_steps = int(abs(time_start-time_stop)/n_chunks)
@@ -99,3 +112,29 @@ rule process:
         )
     shell:
         'python ECO/processing/ECO_processing.py -f {wildcards.exp_family} -e {wildcards.exp_suffix} -m process'
+
+rule combine:
+    input:
+        get_DATA_COMBINE,
+        'configs/{exp_family}/base.yml'
+    output:
+        DATA_RAW / '{exp_family}' / '{exp_family}_spinup' / 'BASIN_spinup_grid_T.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}_spinup' / 'BASIN_spinup_grid_U.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}_spinup' / 'BASIN_spinup_grid_V.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}_spinup' / 'BASIN_spinup_grid_W.nc'
+    run:
+        from ECO.utils import combine_spinup
+        combine_spinup(wildcards.exp_family)
+
+rule combine_data:
+    input:
+        get_DATA_COMBINE,
+        'configs/{exp_family}/base.yml'
+    output:
+        DATA_RAW / '{exp_family}' / '{exp_family}{exp_suffix}' / 'BASIN_combine_grid_T.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}{exp_suffix}' / 'BASIN_combine_grid_U.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}{exp_suffix}' / 'BASIN_combine_grid_V.nc',
+        DATA_RAW / '{exp_family}' / '{exp_family}{exp_suffix}' / 'BASIN_combine_grid_W.nc'
+    run:
+        from ECO.utils import combine_data
+        combine_data(wildcards.exp_family, wildcards.exp_suffix)

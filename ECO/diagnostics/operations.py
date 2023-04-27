@@ -756,6 +756,7 @@ class Grid_ops:
                 raise Exception("W-Point metric is missing, required to calculate depth.")
             
             depth = self.grid.cumsum(mw,'Z',**kwargs)
+            depth.rename('depth_t')
             if surface:
                 depth -= surface
             else:
@@ -773,6 +774,7 @@ class Grid_ops:
                 raise Exception("T-Point metric is missing, required to calculate depth.")
             
             depth = self.grid.cumsum(mt,'Z',**kwargs)
+            depth.rename('depth_w')
             if surface:
                 depth -= surface
             """

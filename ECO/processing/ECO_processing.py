@@ -8,7 +8,7 @@ parent_dir = os.path.abspath(os.path.join(script_dir, '..'))
 sys.path.insert(0, parent_dir)
 
 import diagnostics
-from utils import drop_from_dict, str_or_none, get_number_of_chunks, config_parser, save_by_chunks, get_namelist
+from utils import drop_from_dict, str_or_none, get_number_of_chunks, config_parser, save_by_chunks, get_namelist, existing_files_handler, read_chunks
 from xnemogcm import open_nemo_and_domain_cfg, get_metrics
 
 import numpy as np
@@ -18,62 +18,92 @@ import xarray as xr
 #warnings.filterwarnings('ignore')
                             
 def preprocess():
-    import glob 
+
     from pathlib import PosixPath
 
     # Either load preprocessed data or original data
     if kwargs_pre['prioritize_existing']:
-        # Check files exist
-        export_path = PosixPath(kwargs_proc['path_pre'])# / PosixPath(kwargs_proc['exp_out']).parent
-        file_prefix = PosixPath(kwargs_proc['exp_out']+kwargs_proc['exp_out_suffix']).name
 
-        if list(export_path.glob(file_prefix+'*')):#glob.glob(kwargs_proc['files_pre']+'*'):
-            time_stop  = []
-            time_start  = []
-            # Get timestamps of files
-            for f in list(export_path.glob(file_prefix+'*')): #for f in glob.glob(kwargs_proc['files_pre']+'*'): 
-                filename_parts = os.path.split(f[:-3])[1].split('_')
-                if filename_parts[-1]=='tmp': continue
-                time_stop.append(int(filename_parts[-1]))
-                time_start.append(int(filename_parts[-2]))
-            # If timestamps are insufficient, continue with original, otherwise skip
-            if max(time_stop)>=kwargs_proc['time_stop'] and min(time_start)<=kwargs_proc['time_start']:
-                if kwargs_pre['allow_rechunk']:
-                    print('Get existing Datasets from %s* and rechunk.'%(kwargs_proc['files_pre']))
-                    ds = xr.open_mfdataset(kwargs_proc['files_pre']+'*', decode_times=False, parallel = True)
-                    get_original = False
-                else:
-                    print('Skip renaming and chunking')
-                    return 
-            else:
-                print('Existing data does not have the sufficient time steps, start with renaming')
-                get_original = True
-        else:
-            print('No preprocessed data found, start with renaming')
-            get_original = True
-    else:
-        print('Ignore preexisting data')
-        get_original = True
-
-    if get_original:
-        print('Load original Datasets')
-        ds = open_nemo_and_domain_cfg(
+        case = existing_files_handler(None, None,
+                                      path_prefix=kwargs_proc['path_pre'], 
+                                      sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], 
+                                      mode='r', **kwargs_proc)
+        if case == 0:
+            return
+        elif case == 1:
+            print('Load original Datasets')
+            ds = open_nemo_and_domain_cfg(
             nemo_files=kwargs_proc['path_nemo'],
             domcfg_files=kwargs_proc['path_domain'],
             nemo_kwargs={'decode_times':False, 'drop_variables': ['time_instant'], 'parallel':True}
-        )
-        ds = ds.chunk(ds.dims)
-    # Cut data based on timeslice given and create datasets based on chunks
-    print('Cut to timeslice %i-%i'%(kwargs_proc['time_start'],kwargs_proc['time_stop']))
-    ds = ds.isel(t=slice(kwargs_proc['time_start'],kwargs_proc['time_stop']))
-    
-    # kwargs_proc['n_chunks'] = get_number_of_chunks(ds, **kwargs_proc)  skip because of snakemake
-    print('Create %i timechunks of size %s nbytes'%(kwargs_proc['n_chunks'], ds.nbytes/kwargs_proc['n_chunks']) )
+            )
+            ds = ds.chunk(ds.dims)
+            print('Cut to timeslice %i-%i'%(kwargs_proc['time_start'],kwargs_proc['time_stop']))
+            ds = ds.isel(t=slice(kwargs_proc['time_start'],kwargs_proc['time_stop']))
+            kwargs_pre['allow_rechunk'] = True
+        elif case == 2:
+            ds = read_chunks(path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
+            # Force rechunk?
+            kwargs_pre['allow_rechunk'] = True
 
-    ds = ds.chunk({'t':int(round((kwargs_proc['time_stop']-kwargs_proc['time_start'])/kwargs_proc['n_chunks'],0))})#.load()
-    # Save preprocessed data by chunks
-    save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
-    print('Preprocess finished')
+        if kwargs_pre['allow_rechunk']:
+            # kwargs_proc['n_chunks'] = get_number_of_chunks(ds, **kwargs_proc)  skip because of snakemake
+            print('Create %i timechunks of size %s nbytes'%(kwargs_proc['n_chunks'], ds.nbytes/kwargs_proc['n_chunks']) )
+            ds = ds.chunk({'t':int(round((kwargs_proc['time_stop']-kwargs_proc['time_start'])/kwargs_proc['n_chunks'],0))})#.load()
+            # Save preprocessed data by chunks
+            save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
+            print('Preprocess finished')
+            # Check files exist
+            #     export_path = PosixPath(kwargs_proc['path_pre'])# / PosixPath(kwargs_proc['exp_out']).parent
+            #     file_prefix = PosixPath(kwargs_proc['exp_out']+kwargs_proc['exp_out_suffix']).name
+
+            #     if list(export_path.glob(file_prefix+'*')):#glob.glob(kwargs_proc['files_pre']+'*'):
+            #         time_stop  = []
+            #         time_start  = []
+            #         # Get timestamps of files
+            #         for f in list(export_path.glob(file_prefix+'*')): #for f in glob.glob(kwargs_proc['files_pre']+'*'): 
+            #             filename_parts = os.path.split(f[:-3])[1].split('_')
+            #             if filename_parts[-1]=='tmp': continue
+            #             time_stop.append(int(filename_parts[-1]))
+            #             time_start.append(int(filename_parts[-2]))
+            #         # If timestamps are insufficient, continue with original, otherwise skip
+            #         if max(time_stop)>=kwargs_proc['time_stop'] and min(time_start)<=kwargs_proc['time_start']:
+            #             if kwargs_pre['allow_rechunk']:
+            #                 print('Get existing Datasets from %s* and rechunk.'%(kwargs_proc['files_pre']))
+            #                 ds = xr.open_mfdataset(kwargs_proc['files_pre']+'*', decode_times=False, parallel = True)
+            #                 get_original = False
+            #             else:
+            #                 print('Skip renaming and chunking')
+            #                 return 
+            #         else:
+            #             print('Existing data does not have the sufficient time steps, start with renaming')
+            #             get_original = True
+            #     else:
+            #         print('No preprocessed data found, start with renaming')
+            #         get_original = True
+    # else:
+    #     print('Ignore preexisting data')
+    #     get_original = True
+
+    # if get_original:
+    #     print('Load original Datasets')
+    #     ds = open_nemo_and_domain_cfg(
+    #         nemo_files=kwargs_proc['path_nemo'],
+    #         domcfg_files=kwargs_proc['path_domain'],
+    #         nemo_kwargs={'decode_times':False, 'drop_variables': ['time_instant'], 'parallel':True}
+    #     )
+    #     ds = ds.chunk(ds.dims)
+    # Cut data based on timeslice given and create datasets based on chunks
+    # print('Cut to timeslice %i-%i'%(kwargs_proc['time_start'],kwargs_proc['time_stop']))
+    # ds = ds.isel(t=slice(kwargs_proc['time_start'],kwargs_proc['time_stop']))
+    
+    # # kwargs_proc['n_chunks'] = get_number_of_chunks(ds, **kwargs_proc)  skip because of snakemake
+    # print('Create %i timechunks of size %s nbytes'%(kwargs_proc['n_chunks'], ds.nbytes/kwargs_proc['n_chunks']) )
+
+    # ds = ds.chunk({'t':int(round((kwargs_proc['time_stop']-kwargs_proc['time_start'])/kwargs_proc['n_chunks'],0))})#.load()
+    # # Save preprocessed data by chunks
+    # save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
+    # print('Preprocess finished')
 
 def prepare_dataset(): 
     ds = xr.open_mfdataset(kwargs_proc['files_pre']+'*', decode_times=False, parallel = True)
@@ -142,7 +172,7 @@ def prepare_dataset():
     ds['e3vm'] = ds_proc['e3vm'] = ds.e3v*ds.mask_bd_v
     ds['e3wm'] = ds_proc['e3wm'] = ds.e3w*ds.mask_bd_w
     ds['e3tm_1d']= ds_proc['e3tm_1d'] = grid_ops.average(ds.e3tm,['Y','X'])
-    ds['depth'] = ds_proc['depth'] = - (ds.gdepw_0.values+ds.e3tm/2)
+    ds['depth'] = ds_proc['depth'] = - grid_ops.get_depth_from_metric(ds.e3tm) # Not centered on metrics, but stay consistent with model grid
     ds['depth_1d'] = ds_proc['depth_1d'] = ds.depth.mean(['t','x_c','y_c'])
     ds['depth_s'] = ds_proc['depth_s'] = xr.DataArray(ds['depth'].interp({'t':t_s}).values,coords=ds['depth'].coords)
     save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='domain/metrics', **kwargs_proc)
@@ -170,7 +200,7 @@ def process():
                                         'Z': ds.depth_1d}, eos_properties=kwargs_sim['eos'])
     power = diagnostics.Power(grid_ops)
     energetics=diagnostics.Energetics(grid_ops, properties)
-    trends = {key: kwargs_sim[key] for key in ['T_trends','S_trends','K_trends','P_trends']}
+    trends = {key: kwargs_sim[key] for key in ['T_trends','S_trends','K_trends']}
     energetics_trend=diagnostics.Energetics_trends(grid_ops, properties, trends)
     transport = diagnostics.Transport(grid_ops)
 
@@ -198,7 +228,7 @@ def process():
     ds_proc['rho_gm'] = properties.density(ds_proc['t_gm'], ds_proc['s_gm'], ds['depth_1d'])
 
     ds_proc['zg_eta']= energetics.center_of_gravity_eta(ds.zos,ds_proc.rho,eta_r=eta_mean, boussinesq=True)
-    ds_proc['zg_0'] = energetics.center_of_gravity_classical(ds_proc.rho_gm).mean('t')    
+    ds_proc['zg_0'] = properties.global_mean(ds['depth'])#energetics.center_of_gravity_classical(ds_proc.rho_gm).mean('t')    
 
     argsh = {#'M':  [ds_proc.rho],
              #'PE': [ds_proc.rho],
@@ -216,7 +246,9 @@ def process():
         ds_proc['zg'+f] = getattr(energetics,functions[f])(*argsh[f],**kwargsh[f])
         ds_proc['zg'+f+'_gm']=getattr(energetics,functions[f])(*argsh_gm[f],**kwargsh[f])
 
-    ###
+    if not kwargs_proc['dynamics']:
+        save_by_chunks(ds_proc, path_prefix=kwargs_proc['path_proc'], sub_prefix='properties/properties', mode='a', **kwargs_proc) 
+        
     if kwargs_proc['dynamics']:
         print( 'Process z_g tendencies' )
         
@@ -226,9 +258,9 @@ def process():
         T_trends={}
         S_trends={}
         for i in ds.variables:
-            if (i[:2]=='tt' and not i[5:] in exceptions):
+            if (i[:4]=='ttrd' and not i[5:] in exceptions):
                 T_trends[i[5:]]=ds[i].copy()
-            elif (i[:2]=='st' and not i[5:] in exceptions):
+            elif (i[:4]=='strd' and not i[5:] in exceptions):
                 S_trends[i[5:]]=ds[i].copy()
 
         ds['ketrd_convp2k'] = ds.ketrd_convP2K
@@ -349,13 +381,13 @@ def postprocess():
         data['Forcing'] = p.global_mean(d.dzg_Tqns + d.dzg_Tqsr + d.dzg_Scdt,             Vmask=mask)
         data['Mixing'] = p.global_mean(d.dzg_Tzdf + d.dzg_Tldf + d.dzg_Szdf + d.dzg_Sldf,Vmask=mask)
         data['Conversion'] = p.global_mean(d.dzg_Kconvp2k,                                   Vmask=mask)
-        if not kwargs_proc['spinup']:
-            data['Atf']  = p.global_mean(d.dzg_Tatf + d.dzg_Satf,                          Vmask=mask)
-            data['Total']= p.global_mean(d.dzg_Tzdf + d.dzg_Tldf + d.dzg_Szdf + d.dzg_Sldf +
-                                                      d.dzg_Tqns + d.dzg_Tqsr + d.dzg_Scdt +
-                                                      d.dzg_Tatf + d.dzg_Satf,             Vmask=mask)
-        else:
-            data['Total']= p.global_mean(d.dzg_Tzdf + d.dzg_Tldf + d.dzg_Szdf + d.dzg_Sldf +
+        #if not kwargs_proc['spinup']:
+        #    data['Atf']  = p.global_mean(d.dzg_Tatf + d.dzg_Satf,                          Vmask=mask)
+        #    data['Total']= p.global_mean(d.dzg_Tzdf + d.dzg_Tldf + d.dzg_Szdf + d.dzg_Sldf +
+        #                                              d.dzg_Tqns + d.dzg_Tqsr + d.dzg_Scdt +
+        #                                              d.dzg_Tatf + d.dzg_Satf,             Vmask=mask)
+        #else:
+        data['Total']= p.global_mean(d.dzg_Tzdf + d.dzg_Tldf + d.dzg_Szdf + d.dzg_Sldf +
                                                       d.dzg_Tqns + d.dzg_Tqsr + d.dzg_Scdt,Vmask=mask)
         if kwargs_proc['kinetic_energy']:
             data['Tau']  = p.global_mean(d.dzg_Ktau,                                       Vmask=mask)
@@ -368,7 +400,7 @@ def postprocess():
     post_procml = mean(ds_proc*grid_ops.mld_mask(ds.e3tm,ds.mldr10_1), ds.mask_bd_t)
     post_procbl = mean(ds_proc*grid_ops.mld_mask(ds.e3tm,ds.mldr10_1,invert=True), ds.mask_bd_t)
     for p in proc:
-        if p=='Atf' and kwargs_proc['spinup']:
+        if p=='Atf':
             continue
         elif p=='Taug' and not kwargs_proc['wind_input']:
             continue
@@ -399,7 +431,7 @@ if __name__ == '__main__':
 
     # Load configs
     kwargs_proc, kwargs_pre, kwargs_sim = config_parser(exp_family, exp_suffix=exp_name, log=True)
-    if kwargs_sim['get_namelist']: kwargs_sim['namelist'] = get_namelist(path = kwargs_proc['path_nemo'])
+    if kwargs_sim['get_namelist']: kwargs_sim['namelist'] = get_namelist(exppath = kwargs_proc['path_nemo'])
 
     # Initialize debug-mode
     if debug_mode:

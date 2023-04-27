@@ -96,8 +96,8 @@ class Energetics:
         dS = (S - S_ref)*mask
 
         def h(dT, dS, Z):
-            h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0 * (1+lambda2/2*dS) * dS - nu*dT*dS) * (Z_r - Z)
-                    + 0.5 * (-a0*mu1*dT + b0*mu2*dS) * (Z_r**2 - Z**2))
+            h = - g/rho0 * ((-a0 * (1+lambda1/2*dT) * dT + b0 * (1-lambda2/2*dS) * dS - nu*dT*dS) * (Z_r - Z)
+                    + 0.5 * (-a0*mu1*dT - b0*mu2*dS) * (Z_r**2 - Z**2))
             return h
 
         h = h(dT,dS,Z)

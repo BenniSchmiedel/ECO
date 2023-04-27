@@ -159,6 +159,46 @@ class Properties:
 
         return - g/rho0 * ((b0*(1-l2*dS) - nu*dT)*(Z_r- Z) - 0.5*b0*mu2*(Z_r**2-Z**2))
 
+    def dh_T_new(self, T, S, Z, Z_r=0, T_ref=10, S_ref=35):
+        """
+        :param T:
+        :param S:
+        :param eos:
+        :return:
+        """
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+
+        a0 = self.eos_properties['thermal_expansion']
+        l1 = self.eos_properties['cabbeling_T']
+        nu = self.eos_properties['cabbeling_TS']
+        mu1 = self.eos_properties['thermobaric_T']
+
+        dT = T - T_ref
+        dS = S - S_ref
+
+        return g/rho0 * ((-a0*(1+l1*dT) - nu*dS)*Z - 0.5*a0*mu1*Z**2 )
+
+    def dh_S_new(self, T, S, Z, Z_r=0, T_ref=10, S_ref=35):
+        """
+        :param T:
+        :param S:
+        :param eos:
+        :return:
+        """
+        g = self.constants['g']
+        rho0 = self.constants['rho0']
+
+        b0 = self.eos_properties['haline_expansion']
+        l2 = self.eos_properties['cabbeling_S']
+        nu = self.eos_properties['cabbeling_TS']
+        mu2 = self.eos_properties['thermobaric_S']
+
+        dT = T - T_ref
+        dS = S - S_ref
+
+        return g/rho0 * ((b0*(1-l2*dS) - nu*dT)*Z - 0.5*b0*mu2*Z**2)
+    
     def dh_TZ(self, T, S, Z, T_ref=10, S_ref=35):
 
         g = self.constants['g']
