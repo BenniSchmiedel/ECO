@@ -120,58 +120,55 @@ def existing_files_handler(datasets, datapaths, path_prefix='.', sub_prefix='', 
     # Handle write mode next    
     elif mode =='w':
         # If all expected files exist
-        if all(l in existing_files for l in file_names):
+        if all(l in existing_files for l in file_names) and not kwargs['data_override']:
             print('All files already exists')
-            if kwargs['data_override']:
-                files_to_remove = file_names
-            else:
-                print('Data override is disabled -> Skip')
-                return
-        else:
-            # Check if single files already exist
-            files_to_remove = []
-            tmp_files = []
-            for f in existing_files: 
-                file_name_parts = f[:-3].split('_')
-                if file_name_parts[-1]=='tmp': 
-                    tmp_files.append(export_path+f)
-                    continue
-                stop = int(file_name_parts[-1])
-                start = int(file_name_parts[-2])
-                if stop < kwargs['time_start'] or start > kwargs['time_stop']:
-                    continue
-                files_to_remove.append(export_path / f)
-
-    # Remove tmp files
-    for f in tmp_files:
-        os.remove(f)
-    # If existing timestamps are before time_start -> skip
-    if not files_to_remove:
-        print('No files in selected timeframe exist yet')
-        save()
-        return
-    else:
-        # If override not active, ask for override permission
-        if not kwargs['data_override']:
-            input_text = 'Action required!\n\
-                          There is single existing data of the selected simulation\n\
-                          in the selected timeframe, but override is disabled.\n\
-                          Allow override? [y/n]'
-            choice = ''
-            while choice not in ['y','n']:
-                choice = input(input_text).lower()
+            print('Data override is disabled -> Skip')
+            return
             
-            if choice == 'n':   
-                print('Keep existing data. Duplicates may occur.')
-                save()
-                return
-   
-    datapaths_out = [p[:-3]+'_tmp.nc' for p in datapaths]
-    save()
-    for p in range(len(files_to_remove)):
-        os.remove(files_to_remove[p])
-    for p in range(len(datapaths)):
-        os.rename(datapaths_out[p],datapaths[p])
+            # Check if single files already exist
+        files_to_remove = []
+        tmp_files = []
+        for f in existing_files: 
+            file_name_parts = f[:-3].split('_')
+            if file_name_parts[-1]=='tmp': 
+                tmp_files.append(export_path / f)
+                continue
+            stop = int(file_name_parts[-1])
+            start = int(file_name_parts[-2])
+            if stop < kwargs['time_start'] or start > kwargs['time_stop']:
+                continue
+            files_to_remove.append(export_path / f)
+
+        # Remove tmp files
+        for f in tmp_files:
+            os.remove(f)
+        # If existing timestamps are before time_start -> skip
+        if not files_to_remove:
+            print('No files in selected timeframe exist yet')
+            save()
+            return
+        else:
+            # If override not active, ask for override permission
+            if not kwargs['data_override']:
+                input_text = 'Action required!\n\
+                            There is single existing data of the selected simulation\n\
+                            in the selected timeframe, but override is disabled.\n\
+                            Allow override? [y/n]'
+                choice = ''
+                while choice not in ['y','n']:
+                    choice = input(input_text).lower()
+                
+                if choice == 'n':   
+                    print('Keep existing data. Duplicates may occur.')
+                    save()
+                    return
+    
+        datapaths_out = [p[:-3]+'_tmp.nc' for p in datapaths]
+        save()
+        for p in range(len(files_to_remove)):
+            os.remove(files_to_remove[p])
+        for p in range(len(datapaths)):
+            os.rename(datapaths_out[p],datapaths[p])
 
 def read_chunks(path_prefix='.', sub_prefix='', sub_suffix='', **kwargs):
     from pathlib import PosixPath
@@ -194,6 +191,7 @@ def read_chunks(path_prefix='.', sub_prefix='', sub_suffix='', **kwargs):
 
 def save_by_chunks(ds, path_prefix='', sub_prefix='', sub_suffix='', mode='w', **kwargs):
     import xarray as xr
+    from pathlib import PosixPath
     # Split only possible if any variable is existing. If not then create a dummy
     #if not [var for var in ds.variables if var not in ds.coords]:
     #    ds['dummy'] = xr.zeros_like(ds.t).chunk(
@@ -207,9 +205,10 @@ def save_by_chunks(ds, path_prefix='', sub_prefix='', sub_suffix='', mode='w', *
     if mode=='w':
         existing_files_handler(ds_chunks, chunk_paths, path_prefix=path_prefix, sub_prefix=sub_prefix, sub_suffix=sub_suffix, mode='w', **kwargs)
     elif mode=='a':
+        print('Append data to: %s*'%(PosixPath(path_prefix) / PosixPath(sub_prefix+sub_suffix)))
         xr.save_mfdataset(datasets=ds_chunks, paths=chunk_paths, mode='a') 
 
-def open_datasets(exp, exp_suffix, components='all', combine=True, parallel=True, timestep_slice=None):
+def open_datasets(exp, exp_suffix, components='all', combine=True, parallel=True, timestep_slice=None, compat='no_conflicts', coords='different'):
     from pathlib import Path
     import xarray as xr
     import os,sys
@@ -262,27 +261,35 @@ def open_datasets(exp, exp_suffix, components='all', combine=True, parallel=True
         for comp in components:
             if comp == 'all':
                 if ts is None: 
-                    datasets.append(xr.open_mfdataset(list((DATA / 'domain').glob('*')), decode_times=False, parallel=parallel, data_vars='minimal') )
-                    datasets.append(xr.open_mfdataset(list((DATA / 'properties').glob('*')), decode_times=False, parallel=parallel, data_vars='minimal') )
+                    datasets.append(xr.open_mfdataset(list((DATA / 'domain').glob('*')), decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+                    datasets.append(xr.open_mfdataset(list((DATA / 'properties').glob('*')), decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
                 else:
-                    files_to_open = list(file for file in list((DATA / 'domain').glob('*')) if int(str(file)[:-3].split('_')[-2])<ts[1])
-                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal') )
-                    files_to_open = list(file for file in list((DATA / 'properties').glob('*')) if int(str(file)[:-3].split('_')[-2])<ts[1])
-                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal') )
 
-            elif comp in ['metrics', 'masks'] and 'domain' in directories:
+                    files_to_open = list(file for file in list((DATA / 'domain').glob('*')) if int(str(file)[:-3].split('_')[-1])<=ts[1] and int(str(file)[:-3].split('_')[-2])>=ts[0] )
+                    print(files_to_open)
+                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+                    files_to_open = list(file for file in list((DATA / 'properties').glob('*'))  if int(str(file)[:-3].split('_')[-1])<=ts[1] and int(str(file)[:-3].split('_')[-2])>=ts[0] )
+                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+
+            elif 'domain' in directories and comp in ['metrics', 'masks']:
                 if ts is None: 
-                    datasets.append(xr.open_mfdataset(f"{DATA / 'domain'}/{comp}*", decode_times=False, parallel=parallel, data_vars='minimal') )
+                    datasets.append(xr.open_mfdataset(f"{DATA / 'domain'}/{comp}*", decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
                 else:
-                    files_to_open = list(file for file in list((DATA / 'domain' / comp).glob('*')) if int(str(file)[:-3].split('_')[-2])<ts[1])
-                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal') )
-            elif comp in ['properties', 'moc', 'trends'] and 'properties' in directories:
+                    files_to_open = list(file for file in list((DATA / 'domain' / comp).glob('*')) if int(str(file)[:-3].split('_')[-1])<=ts[1] and int(str(file)[:-3].split('_')[-2])>=ts[0])
+                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+            elif 'properties' in directories and comp in ['properties', 'moc', 'trends']:
                 if ts is None: 
-                    datasets.append(xr.open_mfdataset(f"{DATA / 'properties'}/{comp}*", decode_times=False, parallel=parallel, data_vars='minimal') )  
+                    datasets.append(xr.open_mfdataset(f"{DATA / 'properties'}/{comp}*", decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )  
                 else:
-                    files_to_open = list(file for file in list((DATA / 'properties' / comp).glob('*')) if int(str(file)[:-3].split('_')[-2])<ts[1])
-                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal') )
-        
+                    files_to_open = list(file for file in list((DATA / 'properties' / comp).glob('*')) if int(str(file)[:-3].split('_')[-1])<=ts[1] and int(str(file)[:-3].split('_')[-2])>=ts[0])
+                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+            elif 'postprocessed' in directories and comp in ['postprocessed']:
+                if ts is None: 
+                    datasets.append(xr.open_mfdataset(f"{DATA / 'postprocessed'}/{comp}*", decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )  
+                else:
+                    files_to_open = list(file for file in list((DATA / 'postprocessed' / comp).glob('*')) if int(str(file)[:-3].split('_')[-1])<=ts[1] and int(str(file)[:-3].split('_')[-2])>=ts[0])
+                    datasets.append(xr.open_mfdataset(files_to_open, decode_times=False, parallel=parallel, data_vars='minimal', compat=compat, coords=coords) )
+
         # Save in dictionary, merge components if combine==True
         if combine:
             if ts is None: out[exp_full] = xr.merge(datasets)

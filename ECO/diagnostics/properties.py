@@ -212,7 +212,7 @@ class Properties:
         dT = (T-T_ref)
         dS = (S-S_ref)
         
-        return (- g/rho0 * ((a0*(1+l1*dT) + nu*dS) + a0*mu1*Z ))
+        return (- g/rho0 * (-(a0*(1+l1*dT) + nu*dS) + a0*mu1*Z ))
 
     def dh_SZ(self, T, S, Z, T_ref=10, S_ref=35):
 

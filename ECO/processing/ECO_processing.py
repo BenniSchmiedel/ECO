@@ -433,6 +433,10 @@ if __name__ == '__main__':
     kwargs_proc, kwargs_pre, kwargs_sim = config_parser(exp_family, exp_suffix=exp_name, log=True)
     if kwargs_sim['get_namelist']: kwargs_sim['namelist'] = get_namelist(exppath = kwargs_proc['path_nemo'])
 
+    # kwargs_proc['n_chunks'] = 10
+    # kwargs_proc['time_start'] = 1800
+    # kwargs_proc['time_stop'] = 3600
+
     # Initialize debug-mode
     if debug_mode:
         print('Run Debug-Mode')
@@ -449,6 +453,7 @@ if __name__ == '__main__':
                             account=kwargs_proc['account'],
                             n_workers=kwargs_proc['n_workers'],
                             death_timeout= 300,
+                            walltime='03:00:00',
                             local_directory=kwargs_proc['local_directory'])
     if kwargs_proc['n_jobs']>1:
         cluster.scale(jobs=kwargs_proc['n_jobs'])

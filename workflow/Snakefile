@@ -7,9 +7,9 @@ DATA_PROCESSED = Path('data/processed')
 DATA_PREPROCESSED = Path('data/preprocessed')
 DATA_RAW = Path('data/raw')
 time_start = 0
-time_stop   = 4100
+time_stop  = 3600
 n_chunks = 10
-
+print(n_chunks)
 def get_DATA_RAW(wildcards):
     DATA_RAW = Path('data/raw')
     files_in_raw = [i.name for i in list((DATA_RAW / 'EXP00_test' ).glob('*'))]
@@ -39,9 +39,8 @@ if abs(time_start-time_stop)%n_chunks==0:
     n_steps = int(abs(time_start-time_stop)/n_chunks)
 else:
     n_steps = int(abs(time_start-time_stop)/n_chunks)+1
-timestep_chunks = [f'{i*n_steps}_{(i+1)*n_steps}' if (i+1)*n_steps<time_stop else f'{i*n_steps}_{time_stop}' for i in range(n_chunks)]
-
-
+timestep_chunks = [f'{time_start+i*n_steps}_{time_start+(i+1)*n_steps}' if (i+1)*n_steps<time_stop else f'{i*n_steps}_{time_stop}' for i in range(n_chunks)]
+print(timestep_chunks)
 
 #ALL_EXPS = [i.name for i in list(Path('data/raw/').glob('*'))]
 #variables = 

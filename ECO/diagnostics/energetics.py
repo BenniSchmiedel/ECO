@@ -168,7 +168,56 @@ class Energetics:
         else:
             raise Exception("Data has to be 1D or 3D in space, please check dimensions or time variable name, expected: 't'")
             
+    def center_of_gravity_h_new(self, T, S, z, Z_r=0, T_ref=10, S_ref=35, output_position='T', **kwargs):
+            """
+            Computes the position of the center of mass.
+            Returns the location for each axis. Operates on a 1D or 3D grid.
+            """
+            #Position check
+            try:
+                pos = self.ops._get_position(T)
+            except:
+                pos = 'T'
+                
+            if self.ops._matching_pos(z,'T'):
+                pass
+            else:
+                Exception('depth has the wrong position {}. Please provide a depth on T position.'.format(self.ops._get_position(z)))
 
+            #Compute dynamic_enthalpy
+
+            g = self.properties.constants['g']
+            rho0 = self.properties.constants['rho0']
+
+            a0 = self.properties.eos_properties['thermal_expansion']
+            b0 = self.properties.eos_properties['haline_expansion']
+            lambda1 = self.properties.eos_properties['cabbeling_T']
+            mu1 = self.properties.eos_properties['thermobaric_T']
+
+            mask = self.ops._get_mask(T, **kwargs)
+            
+            def b(T, S, Z, T_ref=10, S_ref=35):
+                Z = Z * mask
+                dT = (T - T_ref)*mask
+                dS = (S - S_ref)*mask
+                b = g/rho0*a0 * (1 + lambda1/2*dT + mu1*Z) * dT - g/rho0*b0 *dS
+                        
+                return b
+            
+            h = -b(T, S, z, T_ref=T_ref, S_ref=S_ref) * (z * mask - Z_r) + g/rho0*a0*mu1/2*(T-T_ref)*(z * mask - Z_r)**2
+            
+            #Check dimension, 1D and 3D valid
+            skip=0
+            if 't' in h.dims:
+                skip=1
+            
+            if len(h.dims[skip:]) == 1:
+                return self.ops.average(h, ['Z'],**kwargs) / self.properties.constants['g']
+            elif len(h.dims[skip:])==3:
+                return self.ops.average(h, ['X','Y','Z'],**kwargs) / self.properties.constants['g']
+            else:
+                raise Exception("Data has to be 1D or 3D in space, please check dimensions or time variable name, expected: 't'")
+        
     def center_of_gravity_eta(self, eta, rho, eta_r=0, boussinesq=False, **kwargs):
         """
         Computes the position of the center of mass.
