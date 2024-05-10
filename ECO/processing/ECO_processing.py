@@ -53,57 +53,6 @@ def preprocess():
             # Save preprocessed data by chunks
             save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
             print('Preprocess finished')
-            # Check files exist
-            #     export_path = PosixPath(kwargs_proc['path_pre'])# / PosixPath(kwargs_proc['exp_out']).parent
-            #     file_prefix = PosixPath(kwargs_proc['exp_out']+kwargs_proc['exp_out_suffix']).name
-
-            #     if list(export_path.glob(file_prefix+'*')):#glob.glob(kwargs_proc['files_pre']+'*'):
-            #         time_stop  = []
-            #         time_start  = []
-            #         # Get timestamps of files
-            #         for f in list(export_path.glob(file_prefix+'*')): #for f in glob.glob(kwargs_proc['files_pre']+'*'): 
-            #             filename_parts = os.path.split(f[:-3])[1].split('_')
-            #             if filename_parts[-1]=='tmp': continue
-            #             time_stop.append(int(filename_parts[-1]))
-            #             time_start.append(int(filename_parts[-2]))
-            #         # If timestamps are insufficient, continue with original, otherwise skip
-            #         if max(time_stop)>=kwargs_proc['time_stop'] and min(time_start)<=kwargs_proc['time_start']:
-            #             if kwargs_pre['allow_rechunk']:
-            #                 print('Get existing Datasets from %s* and rechunk.'%(kwargs_proc['files_pre']))
-            #                 ds = xr.open_mfdataset(kwargs_proc['files_pre']+'*', decode_times=False, parallel = True)
-            #                 get_original = False
-            #             else:
-            #                 print('Skip renaming and chunking')
-            #                 return 
-            #         else:
-            #             print('Existing data does not have the sufficient time steps, start with renaming')
-            #             get_original = True
-            #     else:
-            #         print('No preprocessed data found, start with renaming')
-            #         get_original = True
-    # else:
-    #     print('Ignore preexisting data')
-    #     get_original = True
-
-    # if get_original:
-    #     print('Load original Datasets')
-    #     ds = open_nemo_and_domain_cfg(
-    #         nemo_files=kwargs_proc['path_nemo'],
-    #         domcfg_files=kwargs_proc['path_domain'],
-    #         nemo_kwargs={'decode_times':False, 'drop_variables': ['time_instant'], 'parallel':True}
-    #     )
-    #     ds = ds.chunk(ds.dims)
-    # Cut data based on timeslice given and create datasets based on chunks
-    # print('Cut to timeslice %i-%i'%(kwargs_proc['time_start'],kwargs_proc['time_stop']))
-    # ds = ds.isel(t=slice(kwargs_proc['time_start'],kwargs_proc['time_stop']))
-    
-    # # kwargs_proc['n_chunks'] = get_number_of_chunks(ds, **kwargs_proc)  skip because of snakemake
-    # print('Create %i timechunks of size %s nbytes'%(kwargs_proc['n_chunks'], ds.nbytes/kwargs_proc['n_chunks']) )
-
-    # ds = ds.chunk({'t':int(round((kwargs_proc['time_stop']-kwargs_proc['time_start'])/kwargs_proc['n_chunks'],0))})#.load()
-    # # Save preprocessed data by chunks
-    # save_by_chunks(ds, path_prefix=kwargs_proc['path_pre'], sub_prefix=kwargs_proc['exp_out'], sub_suffix=kwargs_proc['exp_out_suffix'], **kwargs_proc)
-    # print('Preprocess finished')
 
 def prepare_dataset(): 
     ds = xr.open_mfdataset(kwargs_proc['files_pre']+'*', decode_times=False, parallel = True)

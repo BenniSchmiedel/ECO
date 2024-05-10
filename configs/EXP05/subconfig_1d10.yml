@@ -1,0 +1,9 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  exp_in: EXP05_1d10
+  exp_out: EXP05
+  exp_out_suffix: _1d10
+  n_chunks: 10
+  time_start: 0
+  time_stop: 3600

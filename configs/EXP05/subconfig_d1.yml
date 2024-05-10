@@ -1,0 +1,22 @@
+preprocessing:
+  prioritize_existing: true
+
+  vars_to_pass:      # Key is the variables original name, value the new name
+        mldr10_1: mld
+        zos     : zos
+        tos     : tos
+        sos     : sos
+        so      : so
+        thetao  : to
+        woce    : wo
+        woce_eiv: wo_e
+        avt_evd : k_evd
+        ttrd: ttrd*
+        strd: strd*
+processing:
+  exp_in: EXP05_d1
+  exp_out: EXP05
+  exp_out_suffix: _d1
+  n_chunks: 1
+  time_start: 0
+  time_stop: 16

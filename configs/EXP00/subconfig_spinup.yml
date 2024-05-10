@@ -1,0 +1,10 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  dynamics: false
+  exp_in: EXP00_spinup
+  exp_out: EXP00
+  exp_out_suffix: _spinup
+  n_chunks: 10
+  time_start: 0
+  time_stop: 3600

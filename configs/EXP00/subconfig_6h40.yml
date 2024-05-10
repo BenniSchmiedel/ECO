@@ -1,0 +1,9 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  exp_in: EXP00_6h40
+  exp_out: EXP00
+  exp_out_suffix: _6h40
+  n_chunks: 1
+  time_start: 0
+  time_stop: 40

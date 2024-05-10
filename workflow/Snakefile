@@ -61,7 +61,7 @@ rule create_config:
     input:
         'configs/base.yml'
     output:
-        #'configs/{exp_family}/base.yml',
+        # 'configs/{exp_family}/base.yml',
         'configs/{exp_family}/subconfig{exp_suffix}.yml'
     run:
         from ECO.utils import config_preparation

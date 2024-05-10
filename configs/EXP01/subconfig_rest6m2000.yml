@@ -1,0 +1,12 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  domain_path: data/raw/EXP01
+  dynamics: false
+  exp_in: EXP01_rest6m2000
+  exp_out: EXP01
+  exp_out_suffix: _rest6m2000
+  n_chunks: 10
+  nemo_path: data/raw/EXP01
+  time_start: 0
+  time_stop: 4100

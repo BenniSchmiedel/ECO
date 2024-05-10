@@ -3,8 +3,8 @@ processing:
     exp_in         : EXP00
     exp_out        : EXP00
     exp_out_suffix : _test
-    nemo_path      : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
-    domain_path    : /proj/marine/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    nemo_path      : /proj/climategu/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
+    domain_path    : /proj/climategu/users/x_bensc/NEMOGCM/tests/BASIN_compiled_v0.1.2/
     output_path    : data/processed/       
     data_override  : yes
 

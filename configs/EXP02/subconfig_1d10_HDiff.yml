@@ -1,0 +1,9 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  exp_in: EXP02_1d10_HDiff
+  exp_out: EXP02
+  exp_out_suffix: _1d10_HDiff
+  n_chunks: 10
+  time_start: 0
+  time_stop: 3600

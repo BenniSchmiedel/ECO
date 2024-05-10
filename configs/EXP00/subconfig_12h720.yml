@@ -1,0 +1,9 @@
+preprocessing:
+  prioritize_existing: true
+processing:
+  exp_in: EXP00_12h720
+  exp_out: EXP00
+  exp_out_suffix: _12h720
+  n_chunks: 1
+  time_start: 0
+  time_stop: 720
